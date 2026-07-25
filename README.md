@@ -14,6 +14,7 @@ Hosted for free on **GitHub Pages**.
 - **Zero-sum integrity check** — flags chip/money discrepancies instead of producing a wrong-but-balanced ledger.
 - **Minimum-transaction settlement** via exact zero-sum subset partitioning (info-theoretic minimum).
 - **WhatsApp export**, offline support, add-to-home-screen install.
+- **Autosave** across reloads (a locked phone won't lose the night); **New game** clears it explicitly.
 - Chip expressions like `60+10` for rebuys.
 
 ## Architecture

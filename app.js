@@ -26,6 +26,7 @@ const els = {
   playersBody: $('playersBody'),
   addRowBtn: $('addRowBtn'),
   sampleBtn: $('sampleBtn'),
+  newGameBtn: $('newGameBtn'),
   calcBtn: $('calcBtn'),
   warnings: $('warnings'),
   results: $('results'),
@@ -402,6 +403,49 @@ function escapeHtml(s) {
   );
 }
 
+// Autosave keeps a night's ledger safe across accidental reloads / phone locks,
+// so a refresh intentionally restores. "New game" is the explicit way to wipe.
+function newGame() {
+  if (!confirm('Start a new game? This clears all players, chips and settings.')) return;
+
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* private mode — nothing persisted anyway */
+  }
+
+  els.date.value = todayISO();
+  els.buyIn.value = '100';
+  els.feeType.value = 'perHead';
+  els.feeValue.value = '5';
+  els.feeScope.value = 'all';
+  els.foodType.value = 'none';
+  els.foodValue.value = '0';
+  els.foodScope.value = 'all';
+
+  els.playersBody.innerHTML = '';
+  for (let i = 0; i < 4; i++) addRow();
+  refreshHostOptions();
+  els.host.value = '';
+  els.foodRecipient.value = '';
+
+  els.pasteText.value = '';
+  els.photoInput.value = '';
+  els.photoPreview.removeAttribute('src');
+  els.photoPreview.hidden = true;
+  els.photoHint.hidden = false;
+
+  els.results.hidden = true;
+  els.warnings.hidden = true;
+  els.waOut.hidden = true;
+  window.__ledger = null;
+
+  syncFeeControls();
+  persist();
+  showToast('Cleared — ready for a new game');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function loadSample() {
   els.playersBody.innerHTML = '';
   els.date.value = todayISO();
@@ -427,6 +471,7 @@ els.addRowBtn.addEventListener('click', () => {
   persist();
 });
 els.sampleBtn.addEventListener('click', loadSample);
+els.newGameBtn.addEventListener('click', newGame);
 els.fillBtn.addEventListener('click', fillFromText);
 els.calcBtn.addEventListener('click', calculate);
 els.waBtn.addEventListener('click', copyWhatsApp);
