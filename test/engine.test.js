@@ -305,6 +305,28 @@ test('parseBulk reads the messy photo text incl. header noise + artifacts', () =
   ]);
 });
 
+test('parseBulk rejoins OCR line-wraps (name and number on separate lines)', () => {
+  const pasted = [
+    'Balaji - 195',
+    'Sudhaker - 110',
+    'Siva - 175',
+    'Sharath -', // Live Text wrapped the amount onto the next line
+    '110',
+  ].join('\n');
+
+  assert.deepEqual(parseBulk(pasted), [
+    { name: 'Balaji', chips: '195' },
+    { name: 'Sudhaker', chips: '110' },
+    { name: 'Siva', chips: '175' },
+    { name: 'Sharath', chips: '110' },
+  ]);
+});
+
+test('parseBulk does not merge a name-only line with a following named line', () => {
+  // A trailing name with no amount stays dropped rather than stealing a value.
+  assert.deepEqual(parseBulk('Alice - 100\nBob'), [{ name: 'Alice', chips: '100' }]);
+});
+
 test('parseBulk survives pasted standings output (tags, $, decimals)', () => {
   const pasted = ['1. Balaji: +$90.00', '3. Sudhakar (host): +$50.00', '9. Bala: -$105.00'].join(
     '\n'

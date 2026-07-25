@@ -11,7 +11,7 @@ const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
 const SETTLED_KEY = 'poker-ledger-settled-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v10';
+const APP_VERSION = 'v11';
 
 const els = {
   date: $('date'),

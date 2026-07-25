@@ -379,17 +379,38 @@ export function maxZeroSumPartition(bal) {
  * @param {string} text
  * @returns {Array<{name:string, chips:string}>}
  */
+const hasLetter = (s) => /\p{L}/u.test(s);
+const hasDigit = (s) => /\d/.test(s);
+
 export function parseBulk(text) {
   const out = [];
-  const lines = String(text || '').split(/\r?\n/);
-  for (const raw of lines) {
-    const line = raw
-      .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-') // various dashes -> hyphen
-      .replace(/\([^)]*\)/g, ' ') // drop "(host)" / "(food)" tags
-      .replace(/\s*\+\s*/g, '+') // "60 + 10" -> "60+10"
-      .trim();
-    if (!line) continue;
 
+  const normalized = String(text || '')
+    .split(/\r?\n/)
+    .map((raw) =>
+      raw
+        .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-') // various dashes -> hyphen
+        .replace(/\([^)]*\)/g, ' ') // drop "(host)" / "(food)" tags
+        .replace(/\s*\+\s*/g, '+') // "60 + 10" -> "60+10"
+        .trim()
+    )
+    .filter((l) => l !== '');
+
+  // OCR frequently wraps "Sharath - 110" across two lines. Re-join a line that
+  // has a name but no number with a following line that is only a number.
+  const lines = [];
+  for (let i = 0; i < normalized.length; i++) {
+    const cur = normalized[i];
+    const next = normalized[i + 1];
+    if (hasLetter(cur) && !hasDigit(cur) && next && !hasLetter(next) && hasDigit(next)) {
+      lines.push(`${cur} ${next}`);
+      i++; // consume the number line
+    } else {
+      lines.push(cur);
+    }
+  }
+
+  for (const line of lines) {
     // Decimals must stay one token so "$50.00" isn't read as a trailing "00".
     const matches = [...line.matchAll(/\d+(?:\.\d+)?(?:\+\d+(?:\.\d+)?)*/g)];
     if (matches.length === 0) continue;
