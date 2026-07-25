@@ -44,6 +44,21 @@
           <span id="photoHint">Tap to add photo</span>
           <img id="photoPreview" alt="Reference sheet" hidden />
         </label>
+
+        <div class="paste-fill">
+          <p class="muted small" style="margin: 12px 0 6px">
+            <strong>Auto-fill:</strong> on iPhone, long-press the photo above (or in Photos) →
+            <em>Copy Text</em>, then paste here and tap <em>Fill rows</em>.
+          </p>
+          <textarea
+            id="pasteText"
+            rows="4"
+            placeholder="Prudvi - 90&#10;Aditya - 60+10&#10;Pradeep - 120&#10;..."
+          ></textarea>
+          <div class="actions" style="margin-top: 10px">
+            <button id="fillBtn" class="ghost small">Fill rows from text</button>
+          </div>
+        </div>
       </section>
 
       <!-- Settings -->

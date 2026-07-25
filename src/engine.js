@@ -323,6 +323,42 @@ export function maxZeroSumPartition(bal) {
 }
 
 /**
+ * Parse pasted photo text (e.g. from iOS Live Text) into {name, chips} rows.
+ * Tolerates messy OCR: any dash/colon separator, trailing "120)" artifacts,
+ * list numbering ("1. Prudvi 90"), and rebuy expressions ("60+10" / "60 + 10").
+ * Lines without a trailing number (logos/headers) are ignored.
+ *
+ * @param {string} text
+ * @returns {Array<{name:string, chips:string}>}
+ */
+export function parseBulk(text) {
+  const out = [];
+  const lines = String(text || '').split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw
+      .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-') // various dashes -> hyphen
+      .replace(/\s*\+\s*/g, '+') // "60 + 10" -> "60+10"
+      .trim();
+    if (!line) continue;
+
+    const matches = [...line.matchAll(/\d+(?:\+\d+)*/g)];
+    if (matches.length === 0) continue;
+    const last = matches[matches.length - 1];
+
+    const name = line
+      .slice(0, last.index)
+      .replace(/^\s*\d+[.)]\s*/, '') // strip "1." / "1)" list markers
+      .replace(/[^\p{L}\p{N}]+$/u, '') // strip trailing non-alphanumerics (- : ~ . spaces)
+      .replace(/^[^\p{L}\p{N}]+/u, '') // strip leading junk
+      .trim();
+
+    if (!name) continue;
+    out.push({ name, chips: last[0] });
+  }
+  return out;
+}
+
+/**
  * Build a plain-text WhatsApp-friendly blast from a computed ledger.
  */
 export function formatWhatsApp(ledger, { title = 'Poker Night' } = {}) {

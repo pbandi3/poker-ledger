@@ -128,7 +128,8 @@ main {
 }
 
 input,
-select {
+select,
+textarea {
   background: var(--surface-2);
   border: 1px solid var(--line);
   color: var(--text);
@@ -138,10 +139,17 @@ select {
   width: 100%;
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.5;
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.18);
 }

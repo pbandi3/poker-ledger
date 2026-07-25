@@ -1,4 +1,4 @@
-import { computeLedger, formatWhatsApp, formatCents, toDollars } from './src/engine.js';
+import { computeLedger, formatWhatsApp, formatCents, toDollars, parseBulk } from './src/engine.js';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
@@ -24,6 +24,8 @@ const els = {
   photoInput: $('photoInput'),
   photoPreview: $('photoPreview'),
   photoHint: $('photoHint'),
+  pasteText: $('pasteText'),
+  fillBtn: $('fillBtn'),
   installBtn: $('installBtn'),
   toast: $('toast'),
 };
@@ -49,6 +51,19 @@ function parseAmount(raw) {
     .split('+')
     .map((t) => Number(t.trim()))
     .reduce((a, b) => a + b, 0);
+}
+
+// ---- Bulk fill from pasted photo text --------------------------------------
+function fillFromText() {
+  const parsed = parseBulk(els.pasteText.value);
+  if (parsed.length === 0) {
+    return showToast('No "name  number" lines found to parse.');
+  }
+  els.playersBody.innerHTML = '';
+  parsed.forEach(addRow);
+  refreshHostOptions();
+  persist();
+  showToast(`Filled ${parsed.length} player${parsed.length === 1 ? '' : 's'} — review, then Calculate`);
 }
 
 // ---- Row management --------------------------------------------------------
@@ -339,6 +354,7 @@ els.addRowBtn.addEventListener('click', () => {
   persist();
 });
 els.sampleBtn.addEventListener('click', loadSample);
+els.fillBtn.addEventListener('click', fillFromText);
 els.calcBtn.addEventListener('click', calculate);
 els.waBtn.addEventListener('click', copyWhatsApp);
 els.photoInput.addEventListener('change', onPhoto);

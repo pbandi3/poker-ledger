@@ -6,6 +6,7 @@ import {
   settle,
   maxZeroSumPartition,
   largestRemainderSplit,
+  parseBulk,
   formatCents,
   toCents,
   FeeType,
@@ -188,6 +189,45 @@ test('rebuy via higher buyIn is handled', () => {
   assert.equal(l.poolCents, toCents(300));
   const a = l.standings.find((r) => r.name === 'A');
   assert.equal(a.pokerPnlCents, toCents(50));
+});
+
+test('parseBulk reads the messy photo text incl. header noise + artifacts', () => {
+  const pasted = [
+    'Expedia Hotels.com travelocity trivago EGENCIA ORBITZ', // logo line -> ignored
+    'wotif hotwire HomeAway AirAsiaGo', // logo line -> ignored
+    'Prudvi - 90',
+    'Aditya — 60 + 10', // em dash + spaced rebuy
+    'Pradeep- 120)', // trailing paren artifact
+    'chandra ~ 30', // stray tilde becomes separator-ish
+    'Bala — 0',
+    'Balaji : 195',
+    'Sudhakar   110', // space-only separator
+    '8. Siva - 175', // list numbering
+    'Sharath 110',
+  ].join('\n');
+
+  const rows = parseBulk(pasted);
+  assert.deepEqual(rows, [
+    { name: 'Prudvi', chips: '90' },
+    { name: 'Aditya', chips: '60+10' },
+    { name: 'Pradeep', chips: '120' },
+    { name: 'chandra', chips: '30' },
+    { name: 'Bala', chips: '0' },
+    { name: 'Balaji', chips: '195' },
+    { name: 'Sudhakar', chips: '110' },
+    { name: 'Siva', chips: '175' },
+    { name: 'Sharath', chips: '110' },
+  ]);
+});
+
+test('parseBulk output feeds computeLedger cleanly', () => {
+  const rows = parseBulk('A - 150\nB - 50');
+  const l = computeLedger({
+    defaultBuyIn: 100,
+    players: rows.map((r) => ({ name: r.name, chips: Number(r.chips) })),
+  });
+  assert.equal(l.balanced, true);
+  assert.equal(l.transactions.length, 1);
 });
 
 test('formatCents renders signs correctly', () => {
