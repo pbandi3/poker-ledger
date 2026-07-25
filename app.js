@@ -1,15 +1,28 @@
-import { computeLedger, formatWhatsApp, formatCents, toDollars, parseBulk } from './src/engine.js';
+import {
+  computeLedger,
+  formatWhatsApp,
+  formatCents,
+  formatDate,
+  toDollars,
+  parseBulk,
+} from './src/engine.js';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
 
 const els = {
+  date: $('date'),
   buyIn: $('buyIn'),
   host: $('host'),
   feeType: $('feeType'),
   feeValue: $('feeValue'),
   feeValueLabel: $('feeValueLabel'),
   feeScope: $('feeScope'),
+  foodRecipient: $('foodRecipient'),
+  foodType: $('foodType'),
+  foodValue: $('foodValue'),
+  foodValueLabel: $('foodValueLabel'),
+  foodScope: $('foodScope'),
   playersBody: $('playersBody'),
   addRowBtn: $('addRowBtn'),
   sampleBtn: $('sampleBtn'),
@@ -105,29 +118,39 @@ function readRows() {
     .filter((r) => r.name !== '' || r.chips !== '');
 }
 
-function refreshHostOptions() {
-  const current = els.host.value;
-  const names = readRows()
-    .map((r) => r.name)
-    .filter(Boolean);
-  els.host.innerHTML = '<option value="">— none —</option>';
+function fillPeopleSelect(selectEl, names) {
+  const current = selectEl.value;
+  selectEl.innerHTML = '<option value="">— none —</option>';
   for (const n of names) {
     const opt = document.createElement('option');
     opt.value = n;
     opt.textContent = n;
-    els.host.appendChild(opt);
+    selectEl.appendChild(opt);
   }
-  if (names.includes(current)) els.host.value = current;
+  if (names.includes(current)) selectEl.value = current;
+}
+
+function refreshHostOptions() {
+  const names = readRows()
+    .map((r) => r.name)
+    .filter(Boolean);
+  fillPeopleSelect(els.host, names);
+  fillPeopleSelect(els.foodRecipient, names);
 }
 
 // ---- Persistence -----------------------------------------------------------
 function persist() {
   const state = {
+    date: els.date.value,
     buyIn: els.buyIn.value,
     host: els.host.value,
     feeType: els.feeType.value,
     feeValue: els.feeValue.value,
     feeScope: els.feeScope.value,
+    foodRecipient: els.foodRecipient.value,
+    foodType: els.foodType.value,
+    foodValue: els.foodValue.value,
+    foodScope: els.foodScope.value,
     rows: readRows(),
   };
   try {
@@ -145,32 +168,55 @@ function restore() {
     state = null;
   }
   if (state && Array.isArray(state.rows) && state.rows.length) {
+    els.date.value = state.date ?? todayISO();
     els.buyIn.value = state.buyIn ?? '100';
     els.feeType.value = state.feeType ?? 'perHead';
     els.feeValue.value = state.feeValue ?? '5';
     els.feeScope.value = state.feeScope ?? 'all';
+    els.foodType.value = state.foodType ?? 'none';
+    els.foodValue.value = state.foodValue ?? '0';
+    els.foodScope.value = state.foodScope ?? 'all';
     state.rows.forEach(addRow);
     refreshHostOptions();
     if (state.host) els.host.value = state.host;
+    if (state.foodRecipient) els.foodRecipient.value = state.foodRecipient;
   } else {
+    els.date.value = todayISO();
     for (let i = 0; i < 4; i++) addRow();
   }
   syncFeeControls();
 }
 
+function todayISO() {
+  const d = new Date();
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d - off).toISOString().slice(0, 10);
+}
+
 // ---- Fee control affordances ----------------------------------------------
 function syncFeeControls() {
-  const t = els.feeType.value;
-  const labels = {
+  const feeLabels = {
     perHead: 'Fee per player ($)',
     flat: 'Flat fee total ($)',
     percent: 'Fee (% of pool)',
     none: 'Fee value',
   };
-  els.feeValueLabel.textContent = labels[t] || 'Fee value';
-  const disabled = t === 'none';
-  els.feeValue.disabled = disabled;
-  els.feeScope.disabled = disabled;
+  els.feeValueLabel.textContent = feeLabels[els.feeType.value] || 'Fee value';
+  const feeOff = els.feeType.value === 'none';
+  els.feeValue.disabled = feeOff;
+  els.feeScope.disabled = feeOff;
+
+  const foodLabels = {
+    flat: 'Food total ($)',
+    perHead: 'Food per player ($)',
+    percent: 'Food (% of pool)',
+    none: 'Food total ($)',
+  };
+  els.foodValueLabel.textContent = foodLabels[els.foodType.value] || 'Food total ($)';
+  const foodOff = els.foodType.value === 'none';
+  els.foodValue.disabled = foodOff;
+  els.foodScope.disabled = foodOff;
+  els.foodRecipient.disabled = foodOff;
 }
 
 // ---- Compute + render ------------------------------------------------------
@@ -191,12 +237,22 @@ function calculate() {
   try {
     ledger = computeLedger({
       defaultBuyIn: parseAmount(els.buyIn.value) ?? 100,
+      date: els.date.value || null,
       host: els.host.value || null,
       fee: {
         type: els.feeType.value,
         value: parseAmount(els.feeValue.value) ?? 0,
         scope: els.feeScope.value,
       },
+      food:
+        els.foodType.value !== 'none' && els.foodRecipient.value
+          ? {
+              recipient: els.foodRecipient.value,
+              type: els.foodType.value,
+              value: parseAmount(els.foodValue.value) ?? 0,
+              scope: els.foodScope.value,
+            }
+          : null,
       players,
     });
   } catch (err) {
@@ -228,29 +284,40 @@ function pnlCell(cents) {
 }
 
 function renderStandings(ledger) {
+  const showFood = ledger.hasFood;
+
+  const badges = (r) =>
+    (r.isHost ? '<span class="host-badge">HOST</span>' : '') +
+    (r.isFoodRecipient ? '<span class="host-badge food">FOOD</span>' : '');
+
   const rows = ledger.standings
     .map(
       (r) => `
     <tr>
       <td class="num">${r.rank}</td>
-      <td>${escapeHtml(r.name)}${r.isHost ? '<span class="host-badge">HOST</span>' : ''}</td>
-      <td class="num">${(toDollars(r.chipsCents)).toFixed(0)}</td>
+      <td>${escapeHtml(r.name)}${badges(r)}</td>
+      <td class="num">${toDollars(r.chipsCents).toFixed(0)}</td>
       <td class="num">${formatCents(r.buyInCents)}</td>
       ${pnlCell(r.pokerPnlCents)}
       ${pnlCell(r.feeCents)}
+      ${showFood ? pnlCell(r.foodCents) : ''}
       ${pnlCell(r.netCents)}
     </tr>`
     )
     .join('');
 
   const sum = (key) => ledger.standings.reduce((a, r) => a + r[key], 0);
+  const dateLabel = ledger.date ? formatDate(ledger.date) : '';
 
   els.standingsTable.innerHTML = `
+    ${dateLabel ? `<caption>${escapeHtml(dateLabel)}</caption>` : ''}
     <thead>
       <tr>
         <th class="num">#</th><th>Player</th>
         <th class="num">Chips</th><th class="num">Buy-in</th>
-        <th class="num">Poker P&L</th><th class="num">Host fee</th><th class="num">Net</th>
+        <th class="num">Poker P&L</th><th class="num">Host fee</th>
+        ${showFood ? '<th class="num">Food</th>' : ''}
+        <th class="num">Net</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
@@ -261,6 +328,7 @@ function renderStandings(ledger) {
         <td class="num">${formatCents(ledger.poolCents)}</td>
         <td class="num">${formatCents(sum('pokerPnlCents'))}</td>
         <td class="num">${formatCents(sum('feeCents'))}</td>
+        ${showFood ? `<td class="num">${formatCents(sum('foodCents'))}</td>` : ''}
         <td class="num">${formatCents(ledger.netSumCents)}</td>
       </tr>
     </tfoot>`;
@@ -336,13 +404,18 @@ function escapeHtml(s) {
 
 function loadSample() {
   els.playersBody.innerHTML = '';
+  els.date.value = todayISO();
   els.buyIn.value = '100';
   els.feeType.value = 'perHead';
   els.feeValue.value = '5';
   els.feeScope.value = 'all';
+  els.foodType.value = 'none';
+  els.foodValue.value = '0';
+  els.foodScope.value = 'all';
   SAMPLE.forEach(addRow);
   refreshHostOptions();
   els.host.value = 'Sudhakar';
+  els.foodRecipient.value = '';
   syncFeeControls();
   persist();
   showToast('Sample poker night loaded');
@@ -358,13 +431,22 @@ els.fillBtn.addEventListener('click', fillFromText);
 els.calcBtn.addEventListener('click', calculate);
 els.waBtn.addEventListener('click', copyWhatsApp);
 els.photoInput.addEventListener('change', onPhoto);
-els.feeType.addEventListener('change', () => {
-  syncFeeControls();
-  persist();
-});
-[els.buyIn, els.host, els.feeValue, els.feeScope].forEach((el) =>
-  el.addEventListener('input', persist)
+[els.feeType, els.foodType].forEach((el) =>
+  el.addEventListener('change', () => {
+    syncFeeControls();
+    persist();
+  })
 );
+[
+  els.date,
+  els.buyIn,
+  els.host,
+  els.feeValue,
+  els.feeScope,
+  els.foodRecipient,
+  els.foodValue,
+  els.foodScope,
+].forEach((el) => el.addEventListener('input', persist));
 
 restore();
 

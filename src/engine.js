@@ -36,6 +36,20 @@ export function formatCents(cents, { sign = false } = {}) {
   return sign ? `+${body}` : body;
 }
 
+/** Format an ISO date (YYYY-MM-DD) as a readable, timezone-stable label. */
+export function formatDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = String(iso).split('-').map(Number);
+  if (!y || !m || !d) return String(iso);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
 /**
  * Distribute `totalCents` across `weights` using the largest-remainder method
  * so the parts sum EXACTLY to totalCents (no rounding leak).
@@ -94,14 +108,15 @@ function computeFeeTotalCents(fee, playerCount, poolCents) {
  * @param {{
  *   players: Array<{name:string, buyIn?:number, chips:number}>,
  *   defaultBuyIn?: number,
+ *   date?: string|null,
  *   host?: string|null,
  *   fee?: { type:string, value:number, scope?:string } | null,
+ *   food?: { recipient:string, type:string, value:number, scope?:string } | null,
  * }} input
  */
 export function computeLedger(input) {
   const defaultBuyIn = input.defaultBuyIn ?? DEFAULT_BUY_IN;
-  const feeCfg = input.fee ?? { type: FeeType.NONE, value: 0, scope: FeeScope.ALL };
-  const scope = feeCfg.scope ?? FeeScope.ALL;
+  const date = input.date ?? null;
 
   // --- Normalize + validate roster -----------------------------------------
   const seen = new Set();
@@ -125,39 +140,43 @@ export function computeLedger(input) {
     throw new Error(`Host "${host}" is not in the player list.`);
   }
 
+  const foodCfg = input.food ?? null;
+  const foodRecipient =
+    foodCfg && foodCfg.recipient ? String(foodCfg.recipient).trim() : null;
+  if (foodRecipient && !players.some((p) => p.name === foodRecipient)) {
+    throw new Error(`Food recipient "${foodRecipient}" is not in the player list.`);
+  }
+
   // --- Integrity: chips in must equal money in ------------------------------
   const poolCents = players.reduce((a, p) => a + p.buyInCents, 0);
   const chipsCents = players.reduce((a, p) => a + p.chipsCents, 0);
   const chipDiscrepancyCents = chipsCents - poolCents; // +ve = extra chips on table
 
-  // --- Poker P&L (before host fee) ------------------------------------------
+  // --- Poker P&L (before any pot) -------------------------------------------
   const pokerPnl = new Map();
   for (const p of players) pokerPnl.set(p.name, p.chipsCents - p.buyInCents);
 
-  // --- Host fee -------------------------------------------------------------
-  const feeTotalCents = host ? computeFeeTotalCents(feeCfg, players.length, poolCents) : 0;
+  // --- Pots: a recipient fronts a cost and is reimbursed from the pool ------
+  // Host fee and Food are the same mechanic (collect a total, split the cost),
+  // so they are modeled uniformly as "pots".
+  const hostPot = host ? buildPot(host, input.fee, players, pokerPnl, poolCents) : null;
+  const foodPot = foodRecipient
+    ? buildPot(foodRecipient, foodCfg, players, pokerPnl, poolCents)
+    : null;
 
-  // Who pays the fee, and with what weight.
-  let payerWeights;
-  if (scope === FeeScope.WINNERS) {
-    payerWeights = players.map((p) => Math.max(0, pokerPnl.get(p.name)));
-    if (payerWeights.every((w) => w === 0)) {
-      // No winners (edge case) -> fall back to splitting across everyone.
-      payerWeights = players.map(() => 1);
-    }
-  } else {
-    payerWeights = players.map(() => 1); // equal split across all
-  }
-  const feeShares = largestRemainderSplit(feeTotalCents, payerWeights);
-  const feeShareByName = new Map();
-  players.forEach((p, i) => feeShareByName.set(p.name, feeShares[i]));
+  const feeTotalCents = hostPot ? hostPot.totalCents : 0;
+  const foodTotalCents = foodPot ? foodPot.totalCents : 0;
 
-  // --- Net per player = poker P&L - fee share (+ full pool if host) ---------
+  const potAdj = (pot, name) =>
+    pot ? (name === pot.recipient ? pot.totalCents : 0) - (pot.shareByName.get(name) || 0) : 0;
+
+  // --- Net per player = poker P&L + host-pot adj + food-pot adj -------------
   const netByName = new Map();
   for (const p of players) {
-    let net = pokerPnl.get(p.name) - feeShareByName.get(p.name);
-    if (host && p.name === host) net += feeTotalCents; // host collects the pool
-    netByName.set(p.name, net);
+    netByName.set(
+      p.name,
+      pokerPnl.get(p.name) + potAdj(hostPot, p.name) + potAdj(foodPot, p.name)
+    );
   }
 
   // --- Standings (sorted by net desc, then name) ---------------------------
@@ -165,10 +184,12 @@ export function computeLedger(input) {
     .map((p) => ({
       name: p.name,
       isHost: host === p.name,
+      isFoodRecipient: foodRecipient === p.name,
       buyInCents: p.buyInCents,
       chipsCents: p.chipsCents,
       pokerPnlCents: pokerPnl.get(p.name),
-      feeCents: (host === p.name ? feeTotalCents : 0) - feeShareByName.get(p.name),
+      feeCents: potAdj(hostPot, p.name),
+      foodCents: potAdj(foodPot, p.name),
       netCents: netByName.get(p.name),
     }))
     .sort((a, b) => b.netCents - a.netCents || a.name.localeCompare(b.name));
@@ -192,17 +213,44 @@ export function computeLedger(input) {
 
   return {
     players,
+    date,
     host,
+    foodRecipient,
     poolCents,
     chipsCents,
     chipDiscrepancyCents,
     feeTotalCents,
+    foodTotalCents,
+    hasFood: !!foodPot && foodTotalCents !== 0,
     standings,
     transactions,
     balanced,
     netSumCents: netSum,
     warnings: buildWarnings({ chipDiscrepancyCents, netSum }),
   };
+}
+
+/**
+ * Build a reimbursement "pot": one recipient collects `totalCents`, and the
+ * cost is split across payers per the fee scope.
+ * @returns {{recipient:string, totalCents:number, shareByName:Map<string,number>}}
+ */
+function buildPot(recipient, cfg, players, pokerPnl, poolCents) {
+  const scope = (cfg && cfg.scope) || FeeScope.ALL;
+  const totalCents = computeFeeTotalCents(cfg, players.length, poolCents);
+
+  let weights;
+  if (scope === FeeScope.WINNERS) {
+    weights = players.map((p) => Math.max(0, pokerPnl.get(p.name)));
+    if (weights.every((w) => w === 0)) weights = players.map(() => 1);
+  } else {
+    weights = players.map(() => 1); // equal split across everyone
+  }
+
+  const shares = largestRemainderSplit(totalCents, weights);
+  const shareByName = new Map();
+  players.forEach((p, i) => shareByName.set(p.name, shares[i]));
+  return { recipient, totalCents, shareByName };
 }
 
 function buildWarnings({ chipDiscrepancyCents, netSum }) {
@@ -363,13 +411,24 @@ export function parseBulk(text) {
  */
 export function formatWhatsApp(ledger, { title = 'Poker Night' } = {}) {
   const lines = [];
-  lines.push(`*${title} — Final Standings*`);
+  const heading = ledger.date ? `${title} — ${formatDate(ledger.date)}` : title;
+  lines.push(`*${heading} — Final Standings*`);
   lines.push('');
   for (const r of ledger.standings) {
-    const tag = r.isHost ? ' (host)' : '';
+    const tags = [];
+    if (r.isHost) tags.push('host');
+    if (r.isFoodRecipient) tags.push('food');
+    const tag = tags.length ? ` (${tags.join(', ')})` : '';
     lines.push(`${r.rank}. ${r.name}${tag}: ${formatCents(r.netCents, { sign: true })}`);
   }
   lines.push('');
+  if (ledger.feeTotalCents) {
+    lines.push(`Host fee: ${formatCents(ledger.feeTotalCents)} → ${ledger.host}`);
+  }
+  if (ledger.hasFood) {
+    lines.push(`Food: ${formatCents(ledger.foodTotalCents)} → ${ledger.foodRecipient}`);
+  }
+  if (ledger.feeTotalCents || ledger.hasFood) lines.push('');
   if (ledger.balanced) {
     lines.push('*Settle Up* ' + `(${ledger.transactions.length} payments)`);
     lines.push('');

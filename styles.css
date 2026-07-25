@@ -106,6 +106,16 @@ main {
   gap: 8px;
 }
 
+.sub-head {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent);
+  margin: 18px 0 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .muted {
   color: var(--muted);
 }
@@ -285,6 +295,19 @@ table.report th.num {
   padding: 2px 6px;
   margin-left: 6px;
   vertical-align: middle;
+}
+.host-badge.food {
+  background: #5a3d0f;
+  color: #ffe3a3;
+}
+
+table.report caption {
+  caption-side: top;
+  text-align: left;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding-bottom: 8px;
 }
 tr.total-row td {
   font-weight: 700;

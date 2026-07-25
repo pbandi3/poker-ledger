@@ -66,9 +66,17 @@
         <div class="card-head"><h2>2 · Game settings</h2></div>
         <div class="grid">
           <label class="field">
+            <span>Date</span>
+            <input id="date" type="date" />
+          </label>
+          <label class="field">
             <span>Buy-in ($)</span>
             <input id="buyIn" type="number" inputmode="decimal" min="0" step="1" value="100" />
           </label>
+        </div>
+
+        <h3 class="sub-head">Host fee</h3>
+        <div class="grid">
           <label class="field">
             <span>Host</span>
             <select id="host"><option value="">— none —</option></select>
@@ -89,6 +97,34 @@
           <label class="field">
             <span>Fee paid by</span>
             <select id="feeScope">
+              <option value="all" selected>Everyone</option>
+              <option value="winners">Winners only</option>
+            </select>
+          </label>
+        </div>
+
+        <h3 class="sub-head">Food</h3>
+        <div class="grid">
+          <label class="field">
+            <span>Food paid by (reimburse)</span>
+            <select id="foodRecipient"><option value="">— none —</option></select>
+          </label>
+          <label class="field">
+            <span>Food charge</span>
+            <select id="foodType">
+              <option value="none" selected>No food</option>
+              <option value="flat">Flat total ($)</option>
+              <option value="perHead">Per player ($)</option>
+              <option value="percent">% of pool</option>
+            </select>
+          </label>
+          <label class="field">
+            <span id="foodValueLabel">Food total ($)</span>
+            <input id="foodValue" type="number" inputmode="decimal" min="0" step="1" value="0" />
+          </label>
+          <label class="field">
+            <span>Food cost split by</span>
+            <select id="foodScope">
               <option value="all" selected>Everyone</option>
               <option value="winners">Winners only</option>
             </select>

@@ -8,6 +8,7 @@ import {
   largestRemainderSplit,
   parseBulk,
   formatCents,
+  formatWhatsApp,
   toCents,
   FeeType,
   FeeScope,
@@ -189,6 +190,79 @@ test('rebuy via higher buyIn is handled', () => {
   assert.equal(l.poolCents, toCents(300));
   const a = l.standings.find((r) => r.name === 'A');
   assert.equal(a.pokerPnlCents, toCents(50));
+});
+
+const EVEN_FOUR = [
+  { name: 'Alice', chips: 100 },
+  { name: 'Bob', chips: 100 },
+  { name: 'Carol', chips: 100 },
+  { name: 'Dave', chips: 100 },
+];
+
+test('food pot: recipient reimbursed, cost split across everyone', () => {
+  const l = computeLedger({
+    defaultBuyIn: 100,
+    date: '2026-07-25',
+    food: { recipient: 'Bob', type: FeeType.FLAT, value: 40, scope: FeeScope.ALL },
+    players: EVEN_FOUR,
+  });
+  assert.equal(l.hasFood, true);
+  assert.equal(l.foodTotalCents, toCents(40));
+  assert.equal(l.date, '2026-07-25');
+  const by = Object.fromEntries(l.standings.map((r) => [r.name, r]));
+  assert.equal(by.Bob.foodCents, toCents(30)); // collects 40, pays own 10
+  assert.equal(by.Alice.foodCents, toCents(-10));
+  assert.equal(by.Bob.netCents, toCents(30));
+  assert.equal(by.Alice.netCents, toCents(-10));
+  assert.equal(
+    l.standings.reduce((a, r) => a + r.netCents, 0),
+    0
+  );
+});
+
+test('host fee and food combine additively (different recipients)', () => {
+  const l = computeLedger({
+    defaultBuyIn: 100,
+    host: 'Alice',
+    fee: { type: FeeType.PER_HEAD, value: 5, scope: FeeScope.ALL },
+    food: { recipient: 'Bob', type: FeeType.FLAT, value: 20, scope: FeeScope.ALL },
+    players: EVEN_FOUR,
+  });
+  const by = Object.fromEntries(l.standings.map((r) => [r.name, r]));
+  assert.equal(by.Alice.feeCents, toCents(15)); // +20 collected - 5 own
+  assert.equal(by.Alice.foodCents, toCents(-5));
+  assert.equal(by.Alice.netCents, toCents(10));
+  assert.equal(by.Bob.foodCents, toCents(15));
+  assert.equal(by.Bob.feeCents, toCents(-5));
+  assert.equal(by.Bob.netCents, toCents(10));
+  assert.equal(by.Carol.netCents, toCents(-10));
+  assert.equal(
+    l.standings.reduce((a, r) => a + r.netCents, 0),
+    0
+  );
+});
+
+test('no food configured => hasFood false, foodCents zero', () => {
+  const l = computeLedger({ defaultBuyIn: 100, players: EVEN_FOUR });
+  assert.equal(l.hasFood, false);
+  assert.equal(l.foodTotalCents, 0);
+  assert.ok(l.standings.every((r) => r.foodCents === 0));
+});
+
+test('formatWhatsApp includes date, host fee and food lines', () => {
+  const l = computeLedger({
+    defaultBuyIn: 100,
+    date: '2026-07-25',
+    host: 'Alice',
+    fee: { type: FeeType.PER_HEAD, value: 5, scope: FeeScope.ALL },
+    food: { recipient: 'Bob', type: FeeType.FLAT, value: 20, scope: FeeScope.ALL },
+    players: EVEN_FOUR,
+  });
+  const text = formatWhatsApp(l, { title: 'Poker Night' });
+  assert.match(text, /Final Standings/);
+  assert.match(text, /2026/); // date rendered in heading
+  assert.match(text, /Host fee: \$20\.00 → Alice/);
+  assert.match(text, /Food: \$20\.00 → Bob/);
 });
 
 test('parseBulk reads the messy photo text incl. header noise + artifacts', () => {
