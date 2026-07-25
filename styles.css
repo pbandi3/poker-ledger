@@ -19,6 +19,12 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute must beat any component-level `display` rule
+   (e.g. .photo-wrap{display:flex}), otherwise hidden elements still render. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
