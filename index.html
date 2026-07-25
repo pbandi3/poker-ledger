@@ -26,7 +26,10 @@
         <span class="chip" aria-hidden="true"></span>
         <h1>Poker Night Ledger</h1>
       </div>
-      <button id="installBtn" class="ghost" hidden>Install</button>
+      <div class="head-actions">
+        <button id="newGameBtn" class="ghost small danger">New game</button>
+        <button id="installBtn" class="ghost small" hidden>Install</button>
+      </div>
     </header>
 
     <main>
@@ -40,10 +43,17 @@
           Snap or upload the handwritten sheet, then type the counts below while you read it.
         </p>
         <label class="file-drop" id="photoDrop">
-          <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
-          <span id="photoHint">Tap to add photo</span>
-          <img id="photoPreview" alt="Reference sheet" hidden />
+          <input type="file" id="photoInput" accept="image/*" hidden />
+          <span id="photoHint">Tap to take a photo or choose from your library</span>
         </label>
+
+        <figure class="photo-wrap" id="photoWrap" hidden>
+          <img id="photoPreview" alt="Reference sheet" />
+          <figcaption class="muted small">
+            Long-press the image → <strong>Copy Text</strong>, then paste below.
+          </figcaption>
+          <button id="changePhotoBtn" class="ghost small">Change photo</button>
+        </figure>
 
         <div class="paste-fill">
           <p class="muted small" style="margin: 12px 0 6px">
@@ -103,7 +113,7 @@
           </label>
         </div>
 
-        <h3 class="sub-head">Food</h3>
+        <h3 class="sub-head">Food <span class="sub-note">— leave at $0 for no food</span></h3>
         <div class="grid">
           <label class="field">
             <span>Food paid by</span>
@@ -112,14 +122,13 @@
           <label class="field">
             <span>Food charge</span>
             <select id="foodType">
-              <option value="none" selected>No food</option>
+              <option value="perHead" selected>Per player ($)</option>
               <option value="flat">Flat total ($)</option>
-              <option value="perHead">Per player ($)</option>
               <option value="percent">% of pool</option>
             </select>
           </label>
           <label class="field">
-            <span id="foodValueLabel">Food total ($)</span>
+            <span id="foodValueLabel">Food per player ($)</span>
             <input id="foodValue" type="number" inputmode="decimal" min="0" step="1" value="0" />
           </label>
           <label class="field">
@@ -137,7 +146,6 @@
         <div class="card-head">
           <h2>3 · Players &amp; chips</h2>
           <div class="head-actions">
-            <button id="newGameBtn" class="ghost small danger">New game</button>
             <button id="sampleBtn" class="ghost small">Load sample</button>
             <button id="addRowBtn" class="ghost small">+ Add</button>
           </div>

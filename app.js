@@ -37,7 +37,9 @@ const els = {
   waOut: $('waOut'),
   photoInput: $('photoInput'),
   photoPreview: $('photoPreview'),
-  photoHint: $('photoHint'),
+  photoDrop: $('photoDrop'),
+  photoWrap: $('photoWrap'),
+  changePhotoBtn: $('changePhotoBtn'),
   pasteText: $('pasteText'),
   fillBtn: $('fillBtn'),
   installBtn: $('installBtn'),
@@ -174,7 +176,8 @@ function restore() {
     els.feeType.value = state.feeType ?? 'perHead';
     els.feeValue.value = state.feeValue ?? '5';
     els.feeScope.value = state.feeScope ?? 'all';
-    els.foodType.value = state.foodType ?? 'none';
+    els.foodType.value = state.foodType ?? 'perHead';
+    if (!els.foodType.value) els.foodType.value = 'perHead'; // older saves used "none"
     els.foodValue.value = state.foodValue ?? '0';
     els.foodScope.value = state.foodScope ?? 'all';
     state.rows.forEach(addRow);
@@ -207,17 +210,13 @@ function syncFeeControls() {
   els.feeValue.disabled = feeOff;
   els.feeScope.disabled = feeOff;
 
+  // Food has no "off" switch: $0 (or nobody selected) simply means no food.
   const foodLabels = {
     flat: 'Food total ($)',
     perHead: 'Food per player ($)',
     percent: 'Food (% of pool)',
-    none: 'Food total ($)',
   };
-  els.foodValueLabel.textContent = foodLabels[els.foodType.value] || 'Food total ($)';
-  const foodOff = els.foodType.value === 'none';
-  els.foodValue.disabled = foodOff;
-  els.foodScope.disabled = foodOff;
-  els.foodRecipient.disabled = foodOff;
+  els.foodValueLabel.textContent = foodLabels[els.foodType.value] || 'Food per player ($)';
 }
 
 // ---- Compute + render ------------------------------------------------------
@@ -234,6 +233,22 @@ function calculate() {
   }
   if (players.length === 0) return showToast('Add at least one player.');
 
+  // Food is active only when someone fronted it AND the amount is non-zero.
+  const foodValue = parseAmount(els.foodValue.value) ?? 0;
+  if (Number.isNaN(foodValue)) return showToast('Bad food amount.');
+  if (foodValue > 0 && !els.foodRecipient.value) {
+    return showToast('Select who paid for food, or set the food amount to $0.');
+  }
+  const foodCfg =
+    foodValue > 0 && els.foodRecipient.value
+      ? {
+          recipient: els.foodRecipient.value,
+          type: els.foodType.value,
+          value: foodValue,
+          scope: els.foodScope.value,
+        }
+      : null;
+
   let ledger;
   try {
     ledger = computeLedger({
@@ -245,15 +260,7 @@ function calculate() {
         value: parseAmount(els.feeValue.value) ?? 0,
         scope: els.feeScope.value,
       },
-      food:
-        els.foodType.value !== 'none' && els.foodRecipient.value
-          ? {
-              recipient: els.foodRecipient.value,
-              type: els.foodType.value,
-              value: parseAmount(els.foodValue.value) ?? 0,
-              scope: els.foodScope.value,
-            }
-          : null,
+      food: foodCfg,
       players,
     });
   } catch (err) {
@@ -381,10 +388,10 @@ async function copyWhatsApp() {
 function onPhoto(e) {
   const file = e.target.files?.[0];
   if (!file) return;
-  const url = URL.createObjectURL(file);
-  els.photoPreview.src = url;
-  els.photoPreview.hidden = false;
-  els.photoHint.hidden = true;
+  if (els.photoPreview.src) URL.revokeObjectURL(els.photoPreview.src);
+  els.photoPreview.src = URL.createObjectURL(file);
+  els.photoWrap.hidden = false;
+  els.photoDrop.hidden = true;
 }
 
 // ---- Misc helpers ----------------------------------------------------------
@@ -419,7 +426,7 @@ function newGame() {
   els.feeType.value = 'perHead';
   els.feeValue.value = '5';
   els.feeScope.value = 'all';
-  els.foodType.value = 'none';
+  els.foodType.value = 'perHead';
   els.foodValue.value = '0';
   els.foodScope.value = 'all';
 
@@ -431,9 +438,10 @@ function newGame() {
 
   els.pasteText.value = '';
   els.photoInput.value = '';
+  if (els.photoPreview.src) URL.revokeObjectURL(els.photoPreview.src);
   els.photoPreview.removeAttribute('src');
-  els.photoPreview.hidden = true;
-  els.photoHint.hidden = false;
+  els.photoWrap.hidden = true;
+  els.photoDrop.hidden = false;
 
   els.results.hidden = true;
   els.warnings.hidden = true;
@@ -453,7 +461,7 @@ function loadSample() {
   els.feeType.value = 'perHead';
   els.feeValue.value = '5';
   els.feeScope.value = 'all';
-  els.foodType.value = 'none';
+  els.foodType.value = 'perHead';
   els.foodValue.value = '0';
   els.foodScope.value = 'all';
   SAMPLE.forEach(addRow);
@@ -476,6 +484,7 @@ els.fillBtn.addEventListener('click', fillFromText);
 els.calcBtn.addEventListener('click', calculate);
 els.waBtn.addEventListener('click', copyWhatsApp);
 els.photoInput.addEventListener('change', onPhoto);
+els.changePhotoBtn.addEventListener('click', () => els.photoInput.click());
 [els.feeType, els.foodType].forEach((el) =>
   el.addEventListener('change', () => {
     syncFeeControls();

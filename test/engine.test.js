@@ -249,6 +249,17 @@ test('no food configured => hasFood false, foodCents zero', () => {
   assert.ok(l.standings.every((r) => r.foodCents === 0));
 });
 
+test('food recipient selected but $0 => no food fee', () => {
+  const l = computeLedger({
+    defaultBuyIn: 100,
+    food: { recipient: 'Bob', type: FeeType.PER_HEAD, value: 0, scope: FeeScope.ALL },
+    players: EVEN_FOUR,
+  });
+  assert.equal(l.hasFood, false);
+  assert.equal(l.foodTotalCents, 0);
+  assert.ok(l.standings.every((r) => r.foodCents === 0 && r.netCents === 0));
+});
+
 test('formatWhatsApp includes date, host fee and food lines', () => {
   const l = computeLedger({
     defaultBuyIn: 100,

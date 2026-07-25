@@ -109,6 +109,13 @@ main {
   gap: 8px;
 }
 
+.sub-note {
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
 .sub-head {
   font-size: 12px;
   text-transform: uppercase;
@@ -263,10 +270,23 @@ button:active {
   overflow: hidden;
   cursor: pointer;
 }
-.file-drop img {
+/* Preview lives OUTSIDE the file-input label so a long-press triggers iOS
+   Live Text instead of re-opening the photo picker. */
+.photo-wrap {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.photo-wrap img {
   width: 100%;
-  max-height: 340px;
+  max-height: 360px;
   object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
 }
 
 /* Entry table */
