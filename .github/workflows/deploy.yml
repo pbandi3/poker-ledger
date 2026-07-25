@@ -33,10 +33,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-        with:
-          # Auto-create/enable the Pages site if it doesn't exist yet,
-          # so no manual Settings toggle is required.
-          enablement: true
       # The site is plain static files served from the repo root.
       - uses: actions/upload-pages-artifact@v3
         with:
