@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Poker chip">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0%" stop-color="#1e2f4d"/>
+      <stop offset="100%" stop-color="#0b1220"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g transform="translate(256,256)">
+    <circle r="176" fill="#0f5132" stroke="#d7e2ff" stroke-width="14"/>
+    <circle r="120" fill="none" stroke="#d7e2ff" stroke-width="6" stroke-dasharray="6 22" opacity="0.85"/>
+    <!-- edge spots -->
+    <g fill="#2ecc71">
+      <g id="spot"><rect x="-22" y="-176" width="44" height="52" rx="10"/></g>
+      <use href="#spot" transform="rotate(45)"/>
+      <use href="#spot" transform="rotate(90)"/>
+      <use href="#spot" transform="rotate(135)"/>
+      <use href="#spot" transform="rotate(180)"/>
+      <use href="#spot" transform="rotate(225)"/>
+      <use href="#spot" transform="rotate(270)"/>
+      <use href="#spot" transform="rotate(315)"/>
+    </g>
+    <circle r="92" fill="#0b1a10" stroke="#2ecc71" stroke-width="6"/>
+    <text x="0" y="34" text-anchor="middle" font-family="-apple-system, Helvetica, Arial, sans-serif"
+      font-size="104" font-weight="800" fill="#e8edf6">$</text>
+  </g>
+</svg>

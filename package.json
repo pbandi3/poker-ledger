@@ -1,0 +1,15 @@
+{
+  "name": "poker-ledger",
+  "version": "1.0.0",
+  "description": "Photo-to-standings poker night ledger PWA: zero-sum standings + minimized settlement.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "icons": "node scripts/gen-icons.mjs",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "sharp": "^0.33.4"
+  },
+  "license": "MIT"
+}

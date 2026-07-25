@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f5132" />
+    <title>Poker Night Ledger</title>
+    <meta
+      name="description"
+      content="Photo-to-standings poker night ledger: balanced zero-sum standings and a transaction-minimized settlement plan."
+    />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <!-- iOS uses PNG for the home-screen icon. Generate it once via `npm run icons`
+         (falls back to the SVG below on browsers that support it). -->
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="./icons/icon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Poker Ledger" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-bar">
+      <div class="brand">
+        <span class="chip" aria-hidden="true"></span>
+        <h1>Poker Night Ledger</h1>
+      </div>
+      <button id="installBtn" class="ghost" hidden>Install</button>
+    </header>
+
+    <main>
+      <!-- Reference photo (optional) -->
+      <section class="card">
+        <div class="card-head">
+          <h2>1 · Reference photo</h2>
+          <span class="muted">optional</span>
+        </div>
+        <p class="muted small">
+          Snap or upload the handwritten sheet, then type the counts below while you read it.
+        </p>
+        <label class="file-drop" id="photoDrop">
+          <input type="file" id="photoInput" accept="image/*" capture="environment" hidden />
+          <span id="photoHint">Tap to add photo</span>
+          <img id="photoPreview" alt="Reference sheet" hidden />
+        </label>
+      </section>
+
+      <!-- Settings -->
+      <section class="card">
+        <div class="card-head"><h2>2 · Game settings</h2></div>
+        <div class="grid">
+          <label class="field">
+            <span>Buy-in ($)</span>
+            <input id="buyIn" type="number" inputmode="decimal" min="0" step="1" value="100" />
+          </label>
+          <label class="field">
+            <span>Host</span>
+            <select id="host"><option value="">— none —</option></select>
+          </label>
+          <label class="field">
+            <span>Fee type</span>
+            <select id="feeType">
+              <option value="none">No fee</option>
+              <option value="perHead" selected>Per player ($)</option>
+              <option value="flat">Flat total ($)</option>
+              <option value="percent">% of pool</option>
+            </select>
+          </label>
+          <label class="field">
+            <span id="feeValueLabel">Fee value</span>
+            <input id="feeValue" type="number" inputmode="decimal" min="0" step="1" value="5" />
+          </label>
+          <label class="field">
+            <span>Fee paid by</span>
+            <select id="feeScope">
+              <option value="all" selected>Everyone</option>
+              <option value="winners">Winners only</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <!-- Players -->
+      <section class="card">
+        <div class="card-head">
+          <h2>3 · Players &amp; chips</h2>
+          <div class="head-actions">
+            <button id="sampleBtn" class="ghost small">Load sample</button>
+            <button id="addRowBtn" class="ghost small">+ Add</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="entry" id="playersTable">
+            <thead>
+              <tr>
+                <th class="col-name">Name</th>
+                <th class="col-num">Buy-in</th>
+                <th class="col-num">Final chips</th>
+                <th class="col-x"></th>
+              </tr>
+            </thead>
+            <tbody id="playersBody"></tbody>
+          </table>
+        </div>
+        <p class="muted small">
+          Tip: chips can be an expression — type <code>60+10</code> for rebuys. Blank buy-in uses
+          the default above.
+        </p>
+      </section>
+
+      <div class="actions">
+        <button id="calcBtn" class="primary">Calculate standings</button>
+      </div>
+
+      <div id="warnings" class="warnings" hidden></div>
+
+      <!-- Results -->
+      <section id="results" hidden>
+        <section class="card">
+          <div class="card-head"><h2>Final standings</h2></div>
+          <div class="table-scroll">
+            <table class="report" id="standingsTable"></table>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Settlement</h2>
+            <span class="muted" id="txnCount"></span>
+          </div>
+          <div class="table-scroll">
+            <table class="report" id="settlementTable"></table>
+          </div>
+        </section>
+
+        <div class="actions">
+          <button id="waBtn" class="primary">Copy WhatsApp blast</button>
+        </div>
+        <pre id="waOut" class="wa-out" hidden></pre>
+      </section>
+    </main>
+
+    <footer class="foot muted small">
+      Runs entirely on your device · nothing is uploaded · offline-ready
+    </footer>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
