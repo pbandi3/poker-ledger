@@ -9,6 +9,8 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
+// Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
+const APP_VERSION = 'v9';
 
 const els = {
   date: $('date'),
@@ -501,6 +503,9 @@ els.changePhotoBtn.addEventListener('click', () => els.photoInput.click());
   els.foodValue,
   els.foodScope,
 ].forEach((el) => el.addEventListener('input', persist));
+
+const versionEl = $('appVersion');
+if (versionEl) versionEl.textContent = ` · ${APP_VERSION}`;
 
 restore();
 

@@ -1,6 +1,6 @@
 // Offline-first service worker for the Poker Night Ledger PWA.
 // Bump CACHE version whenever any cached asset changes to force an update.
-const CACHE = 'poker-ledger-v8';
+const CACHE = 'poker-ledger-v9';
 
 // Resolve against the SW location so it works under any GitHub Pages subpath.
 const ASSETS = [
@@ -31,27 +31,31 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Cache-first for same-origin GET; network fallback populates the cache.
+// Network-first for same-origin GET, falling back to cache when offline.
+// Cache-first kept serving stale app code after every deploy, which is far
+// worse than a few ms of latency on a page this small.
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req)
-        .then((res) => {
-          if (res && res.status === 200 && res.type === 'basic') {
-            const copy = res.clone();
-            caches.open(CACHE).then((cache) => cache.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => {
+    fetch(req)
+      .then((res) => {
+        if (res && res.status === 200 && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() =>
+        caches.match(req).then((cached) => {
+          if (cached) return cached;
           // Navigation fallback so the app still opens offline.
-          if (req.mode === 'navigate') return caches.match(new URL('./index.html', self.location).toString());
+          if (req.mode === 'navigate') {
+            return caches.match(new URL('./index.html', self.location).toString());
+          }
           return Response.error();
-        });
-    })
+        })
+      )
   );
 });

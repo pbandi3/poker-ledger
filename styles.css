@@ -419,6 +419,10 @@ tr.total-row td {
   padding: 20px 16px calc(24px + env(safe-area-inset-bottom));
 }
 
+.version {
+  opacity: 0.6;
+}
+
 code {
   background: var(--surface-2);
   border: 1px solid var(--line);
