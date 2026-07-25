@@ -294,6 +294,17 @@ test('parseBulk reads the messy photo text incl. header noise + artifacts', () =
   ]);
 });
 
+test('parseBulk survives pasted standings output (tags, $, decimals)', () => {
+  const pasted = ['1. Balaji: +$90.00', '3. Sudhakar (host): +$50.00', '9. Bala: -$105.00'].join(
+    '\n'
+  );
+  assert.deepEqual(parseBulk(pasted), [
+    { name: 'Balaji', chips: '90.00' },
+    { name: 'Sudhakar', chips: '50.00' },
+    { name: 'Bala', chips: '105.00' },
+  ]);
+});
+
 test('parseBulk output feeds computeLedger cleanly', () => {
   const rows = parseBulk('A - 150\nB - 50');
   const l = computeLedger({

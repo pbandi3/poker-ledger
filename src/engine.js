@@ -385,11 +385,13 @@ export function parseBulk(text) {
   for (const raw of lines) {
     const line = raw
       .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-') // various dashes -> hyphen
+      .replace(/\([^)]*\)/g, ' ') // drop "(host)" / "(food)" tags
       .replace(/\s*\+\s*/g, '+') // "60 + 10" -> "60+10"
       .trim();
     if (!line) continue;
 
-    const matches = [...line.matchAll(/\d+(?:\+\d+)*/g)];
+    // Decimals must stay one token so "$50.00" isn't read as a trailing "00".
+    const matches = [...line.matchAll(/\d+(?:\.\d+)?(?:\+\d+(?:\.\d+)?)*/g)];
     if (matches.length === 0) continue;
     const last = matches[matches.length - 1];
 
