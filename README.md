@@ -31,10 +31,11 @@ Three cleanly separated layers:
 
 ## Develop
 
+No dependencies — nothing to `npm install`.
+
 ```bash
-npm install            # only needed for icon generation
 npm test               # run the engine unit tests (node --test)
-npm run icons          # rasterize icons/icon.svg -> PNGs (needs sharp)
+npm run icons          # rasterize icons/icon.svg -> PNGs (macOS: qlmanage + sips)
 npm run serve          # http://localhost:8080  (service worker needs http, not file://)
 ```
 

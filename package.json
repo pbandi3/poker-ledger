@@ -5,11 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "icons": "node scripts/gen-icons.mjs",
+    "icons": "bash scripts/gen-icons.sh",
     "serve": "python3 -m http.server 8080"
-  },
-  "devDependencies": {
-    "sharp": "^0.33.4"
   },
   "license": "MIT"
 }
