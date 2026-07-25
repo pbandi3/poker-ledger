@@ -9,8 +9,9 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
+const SETTLED_KEY = 'poker-ledger-settled-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v9';
+const APP_VERSION = 'v10';
 
 const els = {
   date: $('date'),
@@ -36,7 +37,9 @@ const els = {
   settlementTable: $('settlementTable'),
   txnCount: $('txnCount'),
   waBtn: $('waBtn'),
+  shareBtn: $('shareBtn'),
   waOut: $('waOut'),
+  liveSummary: $('liveSummary'),
   photoInput: $('photoInput'),
   photoPreview: $('photoPreview'),
   photoDrop: $('photoDrop'),
@@ -71,6 +74,55 @@ function parseAmount(raw) {
     .reduce((a, b) => a + b, 0);
 }
 
+// ---- Settled payments (survives reload so you can tick them off live) ------
+function loadSettled() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(SETTLED_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSettled() {
+  try {
+    localStorage.setItem(SETTLED_KEY, JSON.stringify([...settled]));
+  } catch {
+    /* private mode */
+  }
+}
+
+const settled = loadSettled();
+const txnKey = (t) => `${t.from}>${t.to}:${t.amountCents}`;
+
+// ---- Live tie-out strip ----------------------------------------------------
+function updateLiveSummary() {
+  const rows = readRows();
+  const def = parseAmount(els.buyIn.value) ?? 100;
+  let pool = 0;
+  let chips = 0;
+  for (const r of rows) {
+    const b = r.buyIn === '' ? def : parseAmount(r.buyIn);
+    const c = r.chips === '' ? 0 : parseAmount(r.chips);
+    if (!Number.isNaN(b) && b !== null) pool += b;
+    if (!Number.isNaN(c) && c !== null) chips += c;
+  }
+  if (rows.length === 0) {
+    els.liveSummary.hidden = true;
+    return;
+  }
+  els.liveSummary.hidden = false;
+  const diff = chips - pool;
+  const tie =
+    diff === 0
+      ? '<span class="tie ok">balanced</span>'
+      : `<span class="tie off">off by $${Math.abs(diff).toFixed(2)}</span>`;
+  els.liveSummary.innerHTML =
+    `<span><b>${rows.length}</b> players</span>` +
+    `<span>pool <b>$${pool.toFixed(2)}</b></span>` +
+    `<span>chips <b>${chips.toFixed(0)}</b></span>` +
+    tie;
+}
+
 // ---- Bulk fill from pasted photo text --------------------------------------
 function fillFromText() {
   const parsed = parseBulk(els.pasteText.value);
@@ -79,6 +131,7 @@ function fillFromText() {
   }
   els.playersBody.innerHTML = '';
   parsed.forEach(addRow);
+  addRow(); // spare row for a late arrival
   refreshHostOptions();
   persist();
   showToast(`Filled ${parsed.length} player${parsed.length === 1 ? '' : 's'} — review, then Calculate`);
@@ -100,13 +153,32 @@ function makeRow(data = { name: '', buyIn: '', chips: '' }) {
     refreshHostOptions();
     persist();
   });
-  tr.querySelectorAll('input').forEach((inp) =>
+  tr.querySelectorAll('input').forEach((inp) => {
     inp.addEventListener('input', () => {
       if (inp.classList.contains('j-name')) refreshHostOptions();
       persist();
-    })
-  );
+      appendRowIfLastIsUsed(tr);
+    });
+    // Return moves to the next player instead of dismissing the keyboard.
+    inp.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      let next = tr.nextElementSibling;
+      if (!next) {
+        addRow();
+        next = els.playersBody.lastElementChild;
+      }
+      next.querySelector('.j-name').focus();
+    });
+  });
   return tr;
+}
+
+/** Keep one spare empty row at the bottom so you never hunt for "+ Add". */
+function appendRowIfLastIsUsed(tr) {
+  if (!tr || tr !== els.playersBody.lastElementChild) return;
+  const used = [...tr.querySelectorAll('input')].some((i) => i.value.trim() !== '');
+  if (used) addRow();
 }
 
 function addRow(data) {
@@ -163,6 +235,7 @@ function persist() {
   } catch {
     /* storage full / private mode — non-fatal */
   }
+  updateLiveSummary();
 }
 
 function restore() {
@@ -183,6 +256,7 @@ function restore() {
     els.foodValue.value = state.foodValue ?? '0';
     els.foodScope.value = state.foodScope ?? 'all';
     state.rows.forEach(addRow);
+    appendRowIfLastIsUsed(els.playersBody.lastElementChild);
     refreshHostOptions();
     if (state.host) els.host.value = state.host;
     if (state.foodRecipient) els.foodRecipient.value = state.foodRecipient;
@@ -191,6 +265,7 @@ function restore() {
     for (let i = 0; i < 4; i++) addRow();
   }
   syncFeeControls();
+  updateLiveSummary();
 }
 
 function todayISO() {
@@ -304,10 +379,10 @@ function renderStandings(ledger) {
     .map(
       (r) => `
     <tr>
-      <td class="num">${r.rank}</td>
+      <td class="num rank-${r.rank}">${r.rank}</td>
       <td>${escapeHtml(r.name)}${badges(r)}</td>
-      <td class="num">${toDollars(r.chipsCents).toFixed(0)}</td>
-      <td class="num">${formatCents(r.buyInCents)}</td>
+      <td class="num col-detail">${toDollars(r.chipsCents).toFixed(0)}</td>
+      <td class="num col-detail">${formatCents(r.buyInCents)}</td>
       ${pnlCell(r.pokerPnlCents)}
       ${pnlCell(r.feeCents)}
       ${showFood ? pnlCell(r.foodCents) : ''}
@@ -324,7 +399,7 @@ function renderStandings(ledger) {
     <thead>
       <tr>
         <th class="num">#</th><th>Player</th>
-        <th class="num">Chips</th><th class="num">Buy-in</th>
+        <th class="num col-detail">Chips</th><th class="num col-detail">Buy-in</th>
         <th class="num">Poker P&L</th><th class="num">Host fee</th>
         ${showFood ? '<th class="num">Food</th>' : ''}
         <th class="num">Net</th>
@@ -334,8 +409,8 @@ function renderStandings(ledger) {
     <tfoot>
       <tr class="total-row">
         <td></td><td>Total</td>
-        <td class="num">${toDollars(ledger.chipsCents).toFixed(0)}</td>
-        <td class="num">${formatCents(ledger.poolCents)}</td>
+        <td class="num col-detail">${toDollars(ledger.chipsCents).toFixed(0)}</td>
+        <td class="num col-detail">${formatCents(ledger.poolCents)}</td>
         <td class="num">${formatCents(sum('pokerPnlCents'))}</td>
         <td class="num">${formatCents(sum('feeCents'))}</td>
         ${showFood ? `<td class="num">${formatCents(sum('foodCents'))}</td>` : ''}
@@ -351,14 +426,13 @@ function renderSettlement(ledger) {
     els.txnCount.textContent = '';
     return;
   }
-  els.txnCount.textContent = `${ledger.transactions.length} payment${
-    ledger.transactions.length === 1 ? '' : 's'
-  }`;
   const rows = ledger.transactions
     .map(
-      (t, i) => `
-      <tr>
-        <td class="num">${i + 1}</td>
+      (t) => `
+      <tr class="${settled.has(txnKey(t)) ? 'settled' : ''}" data-key="${escapeHtml(txnKey(t))}">
+        <td><input type="checkbox" class="j-paid" ${
+          settled.has(txnKey(t)) ? 'checked' : ''
+        } aria-label="Mark paid" /></td>
         <td class="neg">${escapeHtml(t.from)}</td>
         <td>→</td>
         <td class="pos">${escapeHtml(t.to)}</td>
@@ -366,16 +440,45 @@ function renderSettlement(ledger) {
       </tr>`
     )
     .join('');
+
   els.settlementTable.innerHTML = `
-    <thead><tr><th class="num">#</th><th>Pays</th><th></th><th>Receives</th><th class="num">Amount</th></tr></thead>
-    <tbody>${rows || '<tr><td class="muted" colspan="5">Everyone is even — no payments needed.</td></tr>'}</tbody>`;
+    <thead><tr><th></th><th>Pays</th><th></th><th>Receives</th><th class="num">Amount</th></tr></thead>
+    <tbody>${
+      rows || '<tr><td class="muted" colspan="5">Everyone is even — no payments needed.</td></tr>'
+    }</tbody>`;
+
+  els.settlementTable.querySelectorAll('.j-paid').forEach((box) => {
+    box.addEventListener('change', () => {
+      const tr = box.closest('tr');
+      const key = tr.dataset.key;
+      if (box.checked) settled.add(key);
+      else settled.delete(key);
+      tr.classList.toggle('settled', box.checked);
+      saveSettled();
+      updateTxnProgress(ledger);
+    });
+  });
+
+  updateTxnProgress(ledger);
+}
+
+function updateTxnProgress(ledger) {
+  const total = ledger.transactions.length;
+  const done = ledger.transactions.filter((t) => settled.has(txnKey(t))).length;
+  els.txnCount.textContent = total
+    ? `${done} of ${total} settled`
+    : '';
 }
 
 // ---- WhatsApp export -------------------------------------------------------
-async function copyWhatsApp() {
+function blastText() {
   const ledger = window.__ledger;
-  if (!ledger) return;
-  const text = formatWhatsApp(ledger, { title: 'Poker Night' });
+  return ledger ? formatWhatsApp(ledger, { title: 'Poker Night' }) : null;
+}
+
+async function copyWhatsApp() {
+  const text = blastText();
+  if (!text) return;
   els.waOut.textContent = text;
   els.waOut.hidden = false;
   try {
@@ -383,6 +486,17 @@ async function copyWhatsApp() {
     showToast('Copied — paste into WhatsApp');
   } catch {
     showToast('Copy failed — long-press the text to copy');
+  }
+}
+
+async function shareWhatsApp() {
+  const text = blastText();
+  if (!text) return;
+  try {
+    await navigator.share({ text });
+  } catch (err) {
+    // AbortError just means the user dismissed the share sheet.
+    if (err && err.name !== 'AbortError') copyWhatsApp();
   }
 }
 
@@ -419,9 +533,11 @@ function newGame() {
 
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(SETTLED_KEY);
   } catch {
     /* private mode — nothing persisted anyway */
   }
+  settled.clear();
 
   els.date.value = todayISO();
   els.buyIn.value = '100';
@@ -485,6 +601,14 @@ els.newGameBtn.addEventListener('click', newGame);
 els.fillBtn.addEventListener('click', fillFromText);
 els.calcBtn.addEventListener('click', calculate);
 els.waBtn.addEventListener('click', copyWhatsApp);
+if (navigator.share) {
+  els.shareBtn.hidden = false;
+  els.shareBtn.addEventListener('click', shareWhatsApp);
+} else {
+  // No share sheet (desktop) — promote Copy to the primary action.
+  els.waBtn.classList.remove('ghost');
+  els.waBtn.classList.add('primary');
+}
 els.photoInput.addEventListener('change', onPhoto);
 els.changePhotoBtn.addEventListener('click', () => els.photoInput.click());
 [els.feeType, els.foodType].forEach((el) =>

@@ -262,6 +262,9 @@ button:active {
   display: flex;
   gap: 12px;
 }
+.actions button {
+  flex: 1;
+}
 
 /* File drop */
 .file-drop {
@@ -390,6 +393,75 @@ tr.total-row td {
   border-bottom: none;
 }
 
+/* Live tie-out strip under the entry table */
+.live-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.live-summary b {
+  color: var(--text);
+  font-weight: 600;
+}
+.live-summary .tie {
+  margin-left: auto;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.live-summary .tie.ok {
+  color: #04150b;
+  background: var(--accent);
+}
+.live-summary .tie.off {
+  color: #2a0d0d;
+  background: var(--neg);
+}
+
+/* Settlement progress + settled rows */
+tr.settled td {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+tr.settled td:first-child {
+  text-decoration: none;
+}
+input[type='checkbox'] {
+  -webkit-appearance: checkbox;
+  appearance: checkbox;
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+/* Podium emphasis on the top three */
+.rank-1 {
+  color: #ffd66b;
+  font-weight: 700;
+}
+.rank-2 {
+  color: #cfd8e6;
+  font-weight: 700;
+}
+.rank-3 {
+  color: #e0a06a;
+  font-weight: 700;
+}
+
 .warnings {
   background: rgba(255, 204, 102, 0.12);
   border: 1px solid var(--warn);
@@ -429,6 +501,14 @@ code {
   border-radius: 6px;
   padding: 1px 5px;
   font-size: 12px;
+}
+
+/* Narrow phones: drop the columns you already know (chips/buy-in) so the
+   standings fit without horizontal scrolling. */
+@media (max-width: 520px) {
+  table.report .col-detail {
+    display: none;
+  }
 }
 
 /* Very narrow phones: stack fields rather than squeezing two per row. */

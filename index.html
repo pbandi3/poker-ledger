@@ -163,9 +163,10 @@
             <tbody id="playersBody"></tbody>
           </table>
         </div>
+        <div id="liveSummary" class="live-summary"></div>
         <p class="muted small">
           Tip: chips can be an expression — type <code>60+10</code> for rebuys. Blank buy-in uses
-          the default above.
+          the default above. Press <code>return</code> to jump to the next player.
         </p>
       </section>
 
@@ -195,7 +196,8 @@
         </section>
 
         <div class="actions">
-          <button id="waBtn" class="primary">Copy WhatsApp blast</button>
+          <button id="shareBtn" class="primary" hidden>Share to WhatsApp</button>
+          <button id="waBtn" class="ghost">Copy text</button>
         </div>
         <pre id="waOut" class="wa-out" hidden></pre>
       </section>
