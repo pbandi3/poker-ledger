@@ -322,6 +322,33 @@ table.entry td {
 .col-num input {
   text-align: right;
 }
+.chips-field {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.chips-field input {
+  min-width: 0;
+}
+.j-chips.is-negative {
+  color: var(--danger);
+}
+.sign-toggle {
+  flex: 0 0 auto;
+  width: 34px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 10px;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+.sign-toggle.active {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
 .col-x {
   width: 34px;
 }

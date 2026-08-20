@@ -129,7 +129,7 @@ export function computeLedger(input) {
     const buyIn = p.buyIn == null || p.buyIn === '' ? defaultBuyIn : Number(p.buyIn);
     const chips = Number(p.chips);
     if (!Number.isFinite(buyIn) || buyIn < 0) throw new Error(`Invalid buy-in for ${name}.`);
-    if (!Number.isFinite(chips) || chips < 0) throw new Error(`Invalid chip count for ${name}.`);
+    if (!Number.isFinite(chips)) throw new Error(`Invalid chip count for ${name}.`);
     return { name, buyInCents: toCents(buyIn), chipsCents: toCents(chips) };
   });
 

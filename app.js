@@ -67,7 +67,7 @@ const SAMPLE = [
 function parseAmount(raw) {
   const s = String(raw ?? '').trim();
   if (s === '') return null;
-  if (!/^[\d+.\s]+$/.test(s)) return NaN;
+  if (!/^-?[\d+.\s]+$/.test(s)) return NaN;
   return s
     .split('+')
     .map((t) => Number(t.trim()))
@@ -143,19 +143,38 @@ function makeRow(data = { name: '', buyIn: '', chips: '' }) {
   tr.innerHTML = `
     <td class="col-name"><input class="j-name" type="text" placeholder="Name" autocomplete="off" /></td>
     <td class="col-num"><input class="j-buyin" type="text" inputmode="decimal" placeholder="def" /></td>
-    <td class="col-num"><input class="j-chips" type="text" inputmode="decimal" placeholder="0" /></td>
+    <td class="col-num">
+      <div class="chips-field">
+        <input class="j-chips" type="text" inputmode="decimal" placeholder="0" />
+        <button type="button" class="sign-toggle" title="Toggle negative (owes chips)" aria-label="Toggle negative chip count">&plusmn;</button>
+      </div>
+    </td>
     <td class="col-x"><button class="row-x" title="Remove" aria-label="Remove row">&times;</button></td>`;
   tr.querySelector('.j-name').value = data.name ?? '';
   tr.querySelector('.j-buyin').value = data.buyIn ?? '';
-  tr.querySelector('.j-chips').value = data.chips ?? '';
+  const chipsInput = tr.querySelector('.j-chips');
+  chipsInput.value = data.chips ?? '';
   tr.querySelector('.row-x').addEventListener('click', () => {
     tr.remove();
     refreshHostOptions();
     persist();
   });
+  const updateNegativeState = () => {
+    const negative = chipsInput.value.trim().startsWith('-');
+    chipsInput.classList.toggle('is-negative', negative);
+    tr.querySelector('.sign-toggle').classList.toggle('active', negative);
+  };
+  tr.querySelector('.sign-toggle').addEventListener('click', () => {
+    const raw = chipsInput.value.trim();
+    chipsInput.value = raw.startsWith('-') ? raw.slice(1).trim() : `-${raw}`;
+    chipsInput.dispatchEvent(new Event('input', { bubbles: true }));
+    chipsInput.focus();
+  });
+  updateNegativeState();
   tr.querySelectorAll('input').forEach((inp) => {
     inp.addEventListener('input', () => {
       if (inp.classList.contains('j-name')) refreshHostOptions();
+      if (inp === chipsInput) updateNegativeState();
       persist();
       appendRowIfLastIsUsed(tr);
     });
