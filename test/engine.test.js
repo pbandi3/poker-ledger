@@ -179,6 +179,29 @@ test('detects chip discrepancy and disables settlement', () => {
   assert.ok(l.warnings.length >= 1);
 });
 
+test('negative chips are allowed (player borrowed beyond their stack)', () => {
+  const l = computeLedger({
+    defaultBuyIn: 100,
+    players: [
+      { name: 'Alice', chips: -20 }, // busted and owes beyond zero
+      { name: 'Bob', chips: 220 }, // holds the chips Alice borrowed
+    ],
+  });
+  assert.equal(l.balanced, true);
+  assert.equal(l.chipDiscrepancyCents, 0);
+  const alice = l.standings.find((r) => r.name === 'Alice');
+  assert.equal(alice.chipsCents, toCents(-20));
+  assert.equal(alice.pokerPnlCents, toCents(-120));
+  assert.equal(l.transactions[0].amountCents, toCents(120));
+});
+
+test('negative buy-in is still rejected', () => {
+  assert.throws(
+    () => computeLedger({ players: [{ name: 'Alice', buyIn: -10, chips: 90 }] }),
+    /Invalid buy-in/
+  );
+});
+
 test('rebuy via higher buyIn is handled', () => {
   const l = computeLedger({
     defaultBuyIn: 100,
