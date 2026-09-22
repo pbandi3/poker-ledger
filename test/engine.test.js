@@ -297,6 +297,13 @@ test('formatWhatsApp includes date, host fee and food lines', () => {
   assert.match(text, /2026/); // date rendered in heading
   assert.match(text, /Host fee: \$20\.00 → Alice/);
   assert.match(text, /Food: \$20\.00 → Bob/);
+  assert.doesNotMatch(text, /Mark yourself paid/); // no link => no line
+});
+
+test('formatWhatsApp appends the pay link when provided', () => {
+  const l = computeLedger({ players: EVEN_FOUR });
+  const text = formatWhatsApp(l, { payLink: 'https://example.com/pay.html?g=abc123' });
+  assert.match(text, /Mark yourself paid: https:\/\/example\.com\/pay\.html\?g=abc123/);
 });
 
 test('parseBulk reads the messy photo text incl. header noise + artifacts', () => {

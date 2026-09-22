@@ -5,13 +5,15 @@ import {
   formatDate,
   toDollars,
   parseBulk,
+  txnKey,
 } from './src/engine.js';
+import { supabase } from './src/supabaseClient.js';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
 const SETTLED_KEY = 'poker-ledger-settled-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v11';
+const APP_VERSION = 'v12';
 
 const els = {
   date: $('date'),
@@ -92,7 +94,6 @@ function saveSettled() {
 }
 
 const settled = loadSettled();
-const txnKey = (t) => `${t.from}>${t.to}:${t.amountCents}`;
 
 // ---- Live tie-out strip ----------------------------------------------------
 function updateLiveSummary() {
@@ -482,6 +483,19 @@ function renderSettlement(ledger) {
       tr.classList.toggle('settled', box.checked);
       saveSettled();
       updateTxnProgress(ledger);
+      if (currentGameId) {
+        supabase
+          .from('payments')
+          .upsert({
+            game_id: currentGameId,
+            txn_key: key,
+            paid: box.checked,
+            paid_at: box.checked ? new Date().toISOString() : null,
+          })
+          .then(({ error }) => {
+            if (error) showToast("Couldn't sync payment status");
+          });
+      }
     });
   });
 
@@ -496,14 +510,130 @@ function updateTxnProgress(ledger) {
     : '';
 }
 
+// ---- Share for payment (Supabase) -------------------------------------
+// Publishes the settlement plan so anyone with the link can mark their own
+// payment paid from their phone, synced live back here via Realtime.
+let currentGameId = null;
+let paymentsChannel = null;
+
+function genGameId() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map((b) => (b % 36).toString(36))
+    .join('');
+}
+
+function paymentsUrl(id) {
+  const base = new URL('./pay.html', location.href);
+  base.searchParams.set('g', id);
+  return base.toString();
+}
+
+async function pushLocalPaymentsToSupabase(ledger) {
+  const rows = ledger.transactions
+    .filter((t) => settled.has(txnKey(t)))
+    .map((t) => ({
+      game_id: currentGameId,
+      txn_key: txnKey(t),
+      paid: true,
+      paid_at: new Date().toISOString(),
+    }));
+  if (rows.length) await supabase.from('payments').upsert(rows);
+}
+
+function applyRemotePaidState(key, paid) {
+  if (paid) settled.add(key);
+  else settled.delete(key);
+  saveSettled();
+  const tr = els.settlementTable.querySelector(`tr[data-key="${CSS.escape(key)}"]`);
+  if (tr) {
+    tr.classList.toggle('settled', paid);
+    const box = tr.querySelector('.j-paid');
+    if (box) box.checked = paid;
+  }
+  if (window.__ledger) updateTxnProgress(window.__ledger);
+}
+
+function subscribeToPayments() {
+  if (paymentsChannel) supabase.removeChannel(paymentsChannel);
+  paymentsChannel = supabase
+    .channel(`payments-${currentGameId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'payments', filter: `game_id=eq.${currentGameId}` },
+      (payload) => {
+        if (!payload.new) return;
+        applyRemotePaidState(payload.new.txn_key, !!payload.new.paid);
+      }
+    )
+    .subscribe();
+}
+
+function stopSharing() {
+  if (paymentsChannel) {
+    supabase.removeChannel(paymentsChannel);
+    paymentsChannel = null;
+  }
+  currentGameId = null;
+}
+
+// Publishes (or updates) the settlement plan in Supabase and returns its
+// payment link. Throws on failure — callers decide how to degrade.
+async function publishForPayment(ledger) {
+  const snapshot = {
+    date: ledger.date,
+    host: ledger.host,
+    standings: ledger.standings,
+    transactions: ledger.transactions,
+    netSumCents: ledger.netSumCents,
+  };
+  if (!currentGameId) {
+    let id = genGameId();
+    for (let attempt = 0; ; attempt += 1) {
+      const { error } = await supabase
+        .from('games')
+        .insert({ id, date: ledger.date, host: ledger.host, ledger: snapshot });
+      if (!error) {
+        currentGameId = id;
+        break;
+      }
+      if (error.code !== '23505' || attempt >= 2) throw error; // not a PK collision, or out of retries
+      id = genGameId();
+    }
+    await pushLocalPaymentsToSupabase(ledger);
+    subscribeToPayments();
+  } else {
+    const { error } = await supabase
+      .from('games')
+      .update({
+        ledger: snapshot,
+        date: ledger.date,
+        host: ledger.host,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', currentGameId);
+    if (error) throw error;
+  }
+  return paymentsUrl(currentGameId);
+}
+
 // ---- WhatsApp export -------------------------------------------------------
-function blastText() {
+async function blastText() {
   const ledger = window.__ledger;
-  return ledger ? formatWhatsApp(ledger, { title: 'Poker Night' }) : null;
+  if (!ledger) return null;
+
+  let payLink = null;
+  if (ledger.balanced && ledger.transactions.length) {
+    try {
+      payLink = await publishForPayment(ledger);
+    } catch (err) {
+      showToast(`Payment link unavailable (${err.message || 'network error'}) — sharing standings only`);
+    }
+  }
+  return formatWhatsApp(ledger, { title: 'Poker Night', payLink });
 }
 
 async function copyWhatsApp() {
-  const text = blastText();
+  const text = await blastText();
   if (!text) return;
   els.waOut.textContent = text;
   els.waOut.hidden = false;
@@ -516,7 +646,7 @@ async function copyWhatsApp() {
 }
 
 async function shareWhatsApp() {
-  const text = blastText();
+  const text = await blastText();
   if (!text) return;
   try {
     await navigator.share({ text });
@@ -591,6 +721,7 @@ function newGame() {
   els.warnings.hidden = true;
   els.waOut.hidden = true;
   window.__ledger = null;
+  stopSharing();
 
   syncFeeControls();
   persist();

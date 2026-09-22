@@ -27,6 +27,9 @@ export const toCents = (dollars) => Math.round(Number(dollars) * 100);
 /** Convert integer cents back to a Number of dollars. */
 export const toDollars = (cents) => cents / 100;
 
+/** Stable identity for a settlement transaction, used to track paid status. */
+export const txnKey = (t) => `${t.from}>${t.to}:${t.amountCents}`;
+
 /** Format integer cents as a signed currency string, e.g. -$70.00. */
 export function formatCents(cents, { sign = false } = {}) {
   const neg = cents < 0;
@@ -432,7 +435,7 @@ export function parseBulk(text) {
 /**
  * Build a plain-text WhatsApp-friendly blast from a computed ledger.
  */
-export function formatWhatsApp(ledger, { title = 'Poker Night' } = {}) {
+export function formatWhatsApp(ledger, { title = 'Poker Night', payLink = null } = {}) {
   const lines = [];
   const heading = ledger.date ? `${title} — ${formatDate(ledger.date)}` : title;
   lines.push(`*${heading} — Final Standings*`);
@@ -457,6 +460,10 @@ export function formatWhatsApp(ledger, { title = 'Poker Night' } = {}) {
     lines.push('');
     for (const t of ledger.transactions) {
       lines.push(`${t.from} → ${t.to}: ${formatCents(t.amountCents)}`);
+    }
+    if (payLink) {
+      lines.push('');
+      lines.push(`Mark yourself paid: ${payLink}`);
     }
   } else {
     lines.push('⚠️ Ledger not balanced — fix chip counts before settling.');
