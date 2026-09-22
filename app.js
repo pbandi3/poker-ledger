@@ -310,6 +310,13 @@ function calculate() {
   }
   if (players.length === 0) return showToast('Add at least one player.');
 
+  // Host fee is active only when someone is set to receive it AND the amount is non-zero.
+  const feeValue = parseAmount(els.feeValue.value) ?? 0;
+  if (Number.isNaN(feeValue)) return showToast('Bad host fee amount.');
+  if (els.feeType.value !== 'none' && feeValue > 0 && !els.host.value) {
+    return showToast('Select who received the host fee, or set fee type to No fee.');
+  }
+
   // Food is active only when someone fronted it AND the amount is non-zero.
   const foodValue = parseAmount(els.foodValue.value) ?? 0;
   if (Number.isNaN(foodValue)) return showToast('Bad food amount.');
@@ -334,7 +341,7 @@ function calculate() {
       host: els.host.value || null,
       fee: {
         type: els.feeType.value,
-        value: parseAmount(els.feeValue.value) ?? 0,
+        value: feeValue,
         scope: els.feeScope.value,
       },
       food: foodCfg,
