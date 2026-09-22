@@ -435,7 +435,7 @@ export function parseBulk(text) {
 /**
  * Build a plain-text WhatsApp-friendly blast from a computed ledger.
  */
-export function formatWhatsApp(ledger, { title = 'Poker Night' } = {}) {
+export function formatWhatsApp(ledger, { title = 'Poker Night', payLink = null } = {}) {
   const lines = [];
   const heading = ledger.date ? `${title} — ${formatDate(ledger.date)}` : title;
   lines.push(`*${heading} — Final Standings*`);
@@ -460,6 +460,10 @@ export function formatWhatsApp(ledger, { title = 'Poker Night' } = {}) {
     lines.push('');
     for (const t of ledger.transactions) {
       lines.push(`${t.from} → ${t.to}: ${formatCents(t.amountCents)}`);
+    }
+    if (payLink) {
+      lines.push('');
+      lines.push(`Mark yourself paid: ${payLink}`);
     }
   } else {
     lines.push('⚠️ Ledger not balanced — fix chip counts before settling.');

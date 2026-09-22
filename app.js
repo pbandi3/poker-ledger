@@ -41,10 +41,6 @@ const els = {
   waBtn: $('waBtn'),
   shareBtn: $('shareBtn'),
   waOut: $('waOut'),
-  sharePayBtn: $('sharePayBtn'),
-  shareLinkBox: $('shareLinkBox'),
-  shareLinkInput: $('shareLinkInput'),
-  copyShareLinkBtn: $('copyShareLinkBtn'),
   liveSummary: $('liveSummary'),
   photoInput: $('photoInput'),
   photoPreview: $('photoPreview'),
@@ -532,11 +528,6 @@ function paymentsUrl(id) {
   return base.toString();
 }
 
-function showShareLink(id) {
-  els.shareLinkInput.value = paymentsUrl(id);
-  els.shareLinkBox.hidden = false;
-}
-
 async function pushLocalPaymentsToSupabase(ledger) {
   const rows = ledger.transactions
     .filter((t) => settled.has(txnKey(t)))
@@ -583,67 +574,66 @@ function stopSharing() {
     paymentsChannel = null;
   }
   currentGameId = null;
-  els.shareLinkBox.hidden = true;
-  els.shareLinkInput.value = '';
 }
 
-async function shareForPayment() {
-  const ledger = window.__ledger;
-  if (!ledger || !ledger.balanced) return showToast('Calculate a balanced settlement first.');
-
-  els.sharePayBtn.disabled = true;
-  try {
-    const snapshot = {
-      date: ledger.date,
-      host: ledger.host,
-      standings: ledger.standings,
-      transactions: ledger.transactions,
-      netSumCents: ledger.netSumCents,
-    };
-    if (!currentGameId) {
-      let id = genGameId();
-      for (let attempt = 0; ; attempt += 1) {
-        const { error } = await supabase
-          .from('games')
-          .insert({ id, date: ledger.date, host: ledger.host, ledger: snapshot });
-        if (!error) {
-          currentGameId = id;
-          break;
-        }
-        if (error.code !== '23505' || attempt >= 2) throw error; // not a PK collision, or out of retries
-        id = genGameId();
-      }
-      await pushLocalPaymentsToSupabase(ledger);
-      subscribeToPayments();
-    } else {
+// Publishes (or updates) the settlement plan in Supabase and returns its
+// payment link. Throws on failure — callers decide how to degrade.
+async function publishForPayment(ledger) {
+  const snapshot = {
+    date: ledger.date,
+    host: ledger.host,
+    standings: ledger.standings,
+    transactions: ledger.transactions,
+    netSumCents: ledger.netSumCents,
+  };
+  if (!currentGameId) {
+    let id = genGameId();
+    for (let attempt = 0; ; attempt += 1) {
       const { error } = await supabase
         .from('games')
-        .update({
-          ledger: snapshot,
-          date: ledger.date,
-          host: ledger.host,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', currentGameId);
-      if (error) throw error;
+        .insert({ id, date: ledger.date, host: ledger.host, ledger: snapshot });
+      if (!error) {
+        currentGameId = id;
+        break;
+      }
+      if (error.code !== '23505' || attempt >= 2) throw error; // not a PK collision, or out of retries
+      id = genGameId();
     }
-    showShareLink(currentGameId);
-    showToast('Shared — send the link so everyone can mark themselves paid');
-  } catch (err) {
-    showToast(`Couldn't share: ${err.message || 'network error'}`);
-  } finally {
-    els.sharePayBtn.disabled = false;
+    await pushLocalPaymentsToSupabase(ledger);
+    subscribeToPayments();
+  } else {
+    const { error } = await supabase
+      .from('games')
+      .update({
+        ledger: snapshot,
+        date: ledger.date,
+        host: ledger.host,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', currentGameId);
+    if (error) throw error;
   }
+  return paymentsUrl(currentGameId);
 }
 
 // ---- WhatsApp export -------------------------------------------------------
-function blastText() {
+async function blastText() {
   const ledger = window.__ledger;
-  return ledger ? formatWhatsApp(ledger, { title: 'Poker Night' }) : null;
+  if (!ledger) return null;
+
+  let payLink = null;
+  if (ledger.balanced && ledger.transactions.length) {
+    try {
+      payLink = await publishForPayment(ledger);
+    } catch (err) {
+      showToast(`Payment link unavailable (${err.message || 'network error'}) — sharing standings only`);
+    }
+  }
+  return formatWhatsApp(ledger, { title: 'Poker Night', payLink });
 }
 
 async function copyWhatsApp() {
-  const text = blastText();
+  const text = await blastText();
   if (!text) return;
   els.waOut.textContent = text;
   els.waOut.hidden = false;
@@ -656,7 +646,7 @@ async function copyWhatsApp() {
 }
 
 async function shareWhatsApp() {
-  const text = blastText();
+  const text = await blastText();
   if (!text) return;
   try {
     await navigator.share({ text });
@@ -776,16 +766,6 @@ if (navigator.share) {
   els.waBtn.classList.remove('ghost');
   els.waBtn.classList.add('primary');
 }
-els.sharePayBtn.addEventListener('click', shareForPayment);
-els.copyShareLinkBtn.addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText(els.shareLinkInput.value);
-    showToast('Link copied');
-  } catch {
-    els.shareLinkInput.select();
-    showToast('Select and copy the link');
-  }
-});
 els.photoInput.addEventListener('change', onPhoto);
 els.changePhotoBtn.addEventListener('click', () => els.photoInput.click());
 [els.feeType, els.foodType].forEach((el) =>
