@@ -5,13 +5,15 @@ import {
   formatDate,
   toDollars,
   parseBulk,
+  txnKey,
 } from './src/engine.js';
+import { supabase } from './src/supabaseClient.js';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
 const SETTLED_KEY = 'poker-ledger-settled-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v11';
+const APP_VERSION = 'v12';
 
 const els = {
   date: $('date'),
@@ -39,6 +41,10 @@ const els = {
   waBtn: $('waBtn'),
   shareBtn: $('shareBtn'),
   waOut: $('waOut'),
+  sharePayBtn: $('sharePayBtn'),
+  shareLinkBox: $('shareLinkBox'),
+  shareLinkInput: $('shareLinkInput'),
+  copyShareLinkBtn: $('copyShareLinkBtn'),
   liveSummary: $('liveSummary'),
   photoInput: $('photoInput'),
   photoPreview: $('photoPreview'),
@@ -92,7 +98,6 @@ function saveSettled() {
 }
 
 const settled = loadSettled();
-const txnKey = (t) => `${t.from}>${t.to}:${t.amountCents}`;
 
 // ---- Live tie-out strip ----------------------------------------------------
 function updateLiveSummary() {
@@ -482,6 +487,19 @@ function renderSettlement(ledger) {
       tr.classList.toggle('settled', box.checked);
       saveSettled();
       updateTxnProgress(ledger);
+      if (currentGameId) {
+        supabase
+          .from('payments')
+          .upsert({
+            game_id: currentGameId,
+            txn_key: key,
+            paid: box.checked,
+            paid_at: box.checked ? new Date().toISOString() : null,
+          })
+          .then(({ error }) => {
+            if (error) showToast("Couldn't sync payment status");
+          });
+      }
     });
   });
 
@@ -494,6 +512,128 @@ function updateTxnProgress(ledger) {
   els.txnCount.textContent = total
     ? `${done} of ${total} settled`
     : '';
+}
+
+// ---- Share for payment (Supabase) -------------------------------------
+// Publishes the settlement plan so anyone with the link can mark their own
+// payment paid from their phone, synced live back here via Realtime.
+let currentGameId = null;
+let paymentsChannel = null;
+
+function genGameId() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map((b) => (b % 36).toString(36))
+    .join('');
+}
+
+function paymentsUrl(id) {
+  const base = new URL('./pay.html', location.href);
+  base.searchParams.set('g', id);
+  return base.toString();
+}
+
+function showShareLink(id) {
+  els.shareLinkInput.value = paymentsUrl(id);
+  els.shareLinkBox.hidden = false;
+}
+
+async function pushLocalPaymentsToSupabase(ledger) {
+  const rows = ledger.transactions
+    .filter((t) => settled.has(txnKey(t)))
+    .map((t) => ({
+      game_id: currentGameId,
+      txn_key: txnKey(t),
+      paid: true,
+      paid_at: new Date().toISOString(),
+    }));
+  if (rows.length) await supabase.from('payments').upsert(rows);
+}
+
+function applyRemotePaidState(key, paid) {
+  if (paid) settled.add(key);
+  else settled.delete(key);
+  saveSettled();
+  const tr = els.settlementTable.querySelector(`tr[data-key="${CSS.escape(key)}"]`);
+  if (tr) {
+    tr.classList.toggle('settled', paid);
+    const box = tr.querySelector('.j-paid');
+    if (box) box.checked = paid;
+  }
+  if (window.__ledger) updateTxnProgress(window.__ledger);
+}
+
+function subscribeToPayments() {
+  if (paymentsChannel) supabase.removeChannel(paymentsChannel);
+  paymentsChannel = supabase
+    .channel(`payments-${currentGameId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'payments', filter: `game_id=eq.${currentGameId}` },
+      (payload) => {
+        if (!payload.new) return;
+        applyRemotePaidState(payload.new.txn_key, !!payload.new.paid);
+      }
+    )
+    .subscribe();
+}
+
+function stopSharing() {
+  if (paymentsChannel) {
+    supabase.removeChannel(paymentsChannel);
+    paymentsChannel = null;
+  }
+  currentGameId = null;
+  els.shareLinkBox.hidden = true;
+  els.shareLinkInput.value = '';
+}
+
+async function shareForPayment() {
+  const ledger = window.__ledger;
+  if (!ledger || !ledger.balanced) return showToast('Calculate a balanced settlement first.');
+
+  els.sharePayBtn.disabled = true;
+  try {
+    const snapshot = {
+      date: ledger.date,
+      host: ledger.host,
+      standings: ledger.standings,
+      transactions: ledger.transactions,
+      netSumCents: ledger.netSumCents,
+    };
+    if (!currentGameId) {
+      let id = genGameId();
+      for (let attempt = 0; ; attempt += 1) {
+        const { error } = await supabase
+          .from('games')
+          .insert({ id, date: ledger.date, host: ledger.host, ledger: snapshot });
+        if (!error) {
+          currentGameId = id;
+          break;
+        }
+        if (error.code !== '23505' || attempt >= 2) throw error; // not a PK collision, or out of retries
+        id = genGameId();
+      }
+      await pushLocalPaymentsToSupabase(ledger);
+      subscribeToPayments();
+    } else {
+      const { error } = await supabase
+        .from('games')
+        .update({
+          ledger: snapshot,
+          date: ledger.date,
+          host: ledger.host,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', currentGameId);
+      if (error) throw error;
+    }
+    showShareLink(currentGameId);
+    showToast('Shared — send the link so everyone can mark themselves paid');
+  } catch (err) {
+    showToast(`Couldn't share: ${err.message || 'network error'}`);
+  } finally {
+    els.sharePayBtn.disabled = false;
+  }
 }
 
 // ---- WhatsApp export -------------------------------------------------------
@@ -591,6 +731,7 @@ function newGame() {
   els.warnings.hidden = true;
   els.waOut.hidden = true;
   window.__ledger = null;
+  stopSharing();
 
   syncFeeControls();
   persist();
@@ -635,6 +776,16 @@ if (navigator.share) {
   els.waBtn.classList.remove('ghost');
   els.waBtn.classList.add('primary');
 }
+els.sharePayBtn.addEventListener('click', shareForPayment);
+els.copyShareLinkBtn.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(els.shareLinkInput.value);
+    showToast('Link copied');
+  } catch {
+    els.shareLinkInput.select();
+    showToast('Select and copy the link');
+  }
+});
 els.photoInput.addEventListener('change', onPhoto);
 els.changePhotoBtn.addEventListener('click', () => els.photoInput.click());
 [els.feeType, els.foodType].forEach((el) =>

@@ -266,6 +266,25 @@ button:active {
   flex: 1;
 }
 
+.share-link-box {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.share-link-row {
+  display: flex;
+  gap: 8px;
+}
+.share-link-row input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+.share-link-row button {
+  flex: 0 0 auto;
+}
+
 /* File drop */
 .file-drop {
   display: flex;

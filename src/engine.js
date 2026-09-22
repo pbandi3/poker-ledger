@@ -27,6 +27,9 @@ export const toCents = (dollars) => Math.round(Number(dollars) * 100);
 /** Convert integer cents back to a Number of dollars. */
 export const toDollars = (cents) => cents / 100;
 
+/** Stable identity for a settlement transaction, used to track paid status. */
+export const txnKey = (t) => `${t.from}>${t.to}:${t.amountCents}`;
+
 /** Format integer cents as a signed currency string, e.g. -$70.00. */
 export function formatCents(cents, { sign = false } = {}) {
   const neg = cents < 0;

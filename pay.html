@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f5132" />
+    <title>Settle Up — Poker Night Ledger</title>
+    <meta
+      name="description"
+      content="Mark poker night payments as paid — shared live with everyone in the game."
+    />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="./icons/icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="app-bar">
+      <div class="brand">
+        <span class="chip" aria-hidden="true"></span>
+        <h1>Settle Up</h1>
+      </div>
+    </header>
+    <main>
+      <section class="card">
+        <div class="card-head">
+          <h2 id="payTitle">Loading…</h2>
+          <span class="muted" id="payProgress"></span>
+        </div>
+        <div class="table-scroll">
+          <table class="report" id="payTable"></table>
+        </div>
+        <p class="muted small">Tap a row to mark it paid or unpaid — it updates live for everyone with this link.</p>
+      </section>
+    </main>
+
+    <footer class="foot muted small">Poker Night Ledger</footer>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="./pay.js"></script>
+  </body>
+</html>

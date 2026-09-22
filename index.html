@@ -193,6 +193,16 @@
           <div class="table-scroll">
             <table class="report" id="settlementTable"></table>
           </div>
+          <div class="actions">
+            <button id="sharePayBtn" class="ghost">Share for payment</button>
+          </div>
+          <div id="shareLinkBox" class="share-link-box" hidden>
+            <span class="muted small">Anyone with this link can mark a payment as paid — updates here live:</span>
+            <div class="share-link-row">
+              <input id="shareLinkInput" type="text" readonly aria-label="Payment link" />
+              <button id="copyShareLinkBtn" class="ghost small">Copy</button>
+            </div>
+          </div>
         </section>
 
         <div class="actions">
@@ -204,7 +214,7 @@
     </main>
 
     <footer class="foot muted small">
-      Runs entirely on your device · nothing is uploaded · offline-ready
+      Runs on your device · nothing leaves it unless you tap "Share for payment" · offline-ready
       <span id="appVersion" class="version"></span>
     </footer>
 
