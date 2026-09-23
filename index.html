@@ -7,7 +7,7 @@
     <title>Poker Night Ledger</title>
     <meta
       name="description"
-      content="Photo-to-standings poker night ledger: balanced zero-sum standings and a transaction-minimized settlement plan."
+      content="Poker night ledger: balanced zero-sum standings and a transaction-minimized settlement plan."
     />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
@@ -34,47 +34,9 @@
     </header>
 
     <main>
-      <!-- Reference photo (optional) -->
-      <section class="card">
-        <div class="card-head">
-          <h2>1 · Reference photo</h2>
-          <span class="muted">optional</span>
-        </div>
-        <p class="muted small">
-          Snap or upload the handwritten sheet, then type the counts below while you read it.
-        </p>
-        <label class="file-drop" id="photoDrop">
-          <input type="file" id="photoInput" accept="image/*" hidden />
-          <span id="photoHint">Tap to take a photo or choose from your library</span>
-        </label>
-
-        <figure class="photo-wrap" id="photoWrap" hidden>
-          <img id="photoPreview" alt="Reference sheet" />
-          <figcaption class="muted small">
-            Long-press the image → <strong>Copy Text</strong>, then paste below.
-          </figcaption>
-          <button id="changePhotoBtn" class="ghost small">Change photo</button>
-        </figure>
-
-        <div class="paste-fill">
-          <p class="muted small" style="margin: 12px 0 6px">
-            <strong>Auto-fill:</strong> on iPhone, long-press the photo above (or in Photos) →
-            <em>Copy Text</em>, then paste here and tap <em>Fill rows</em>.
-          </p>
-          <textarea
-            id="pasteText"
-            rows="4"
-            placeholder="Prudvi - 90&#10;Aditya - 60+10&#10;Pradeep - 120&#10;..."
-          ></textarea>
-          <div class="actions" style="margin-top: 10px">
-            <button id="fillBtn" class="ghost small">Fill rows from text</button>
-          </div>
-        </div>
-      </section>
-
       <!-- Settings -->
       <section class="card">
-        <div class="card-head"><h2>2 · Game settings</h2></div>
+        <div class="card-head"><h2>1 · Game settings</h2></div>
         <div class="grid">
           <label class="field">
             <span>Date</span>
@@ -145,7 +107,7 @@
       <!-- Players -->
       <section class="card">
         <div class="card-head">
-          <h2>3 · Players &amp; chips</h2>
+          <h2>2 · Players &amp; chips</h2>
           <div class="head-actions">
             <button id="regularsBtn" class="ghost small">Load regulars</button>
             <button id="sampleBtn" class="ghost small">Load sample</button>

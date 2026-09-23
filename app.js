@@ -4,7 +4,6 @@ import {
   formatCents,
   formatDate,
   toDollars,
-  parseBulk,
   txnKey,
 } from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
@@ -13,7 +12,7 @@ const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
 const SETTLED_KEY = 'poker-ledger-settled-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v15';
 
 const els = {
   date: $('date'),
@@ -43,13 +42,6 @@ const els = {
   shareBtn: $('shareBtn'),
   waOut: $('waOut'),
   liveSummary: $('liveSummary'),
-  photoInput: $('photoInput'),
-  photoPreview: $('photoPreview'),
-  photoDrop: $('photoDrop'),
-  photoWrap: $('photoWrap'),
-  changePhotoBtn: $('changePhotoBtn'),
-  pasteText: $('pasteText'),
-  fillBtn: $('fillBtn'),
   installBtn: $('installBtn'),
   toast: $('toast'),
 };
@@ -123,20 +115,6 @@ function updateLiveSummary() {
     `<span>pool <b>$${pool.toFixed(2)}</b></span>` +
     `<span>chips <b>${chips.toFixed(0)}</b></span>` +
     tie;
-}
-
-// ---- Bulk fill from pasted photo text --------------------------------------
-function fillFromText() {
-  const parsed = parseBulk(els.pasteText.value);
-  if (parsed.length === 0) {
-    return showToast('No "name  number" lines found to parse.');
-  }
-  els.playersBody.innerHTML = '';
-  parsed.forEach(addRow);
-  addRow(); // spare row for a late arrival
-  refreshHostOptions();
-  persist();
-  showToast(`Filled ${parsed.length} player${parsed.length === 1 ? '' : 's'} — review, then Calculate`);
 }
 
 // ---- Row management --------------------------------------------------------
@@ -657,16 +635,6 @@ async function shareWhatsApp() {
   }
 }
 
-// ---- Photo preview (reference only; no upload) -----------------------------
-function onPhoto(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  if (els.photoPreview.src) URL.revokeObjectURL(els.photoPreview.src);
-  els.photoPreview.src = URL.createObjectURL(file);
-  els.photoWrap.hidden = false;
-  els.photoDrop.hidden = true;
-}
-
 // ---- Misc helpers ----------------------------------------------------------
 let toastTimer;
 function showToast(msg) {
@@ -710,13 +678,6 @@ function newGame() {
   refreshHostOptions();
   els.host.value = '';
   els.foodRecipient.value = '';
-
-  els.pasteText.value = '';
-  els.photoInput.value = '';
-  if (els.photoPreview.src) URL.revokeObjectURL(els.photoPreview.src);
-  els.photoPreview.removeAttribute('src');
-  els.photoWrap.hidden = true;
-  els.photoDrop.hidden = false;
 
   els.results.hidden = true;
   els.warnings.hidden = true;
@@ -796,7 +757,6 @@ els.addRowBtn.addEventListener('click', () => {
 els.regularsBtn.addEventListener('click', loadRegulars);
 els.sampleBtn.addEventListener('click', loadSample);
 els.newGameBtn.addEventListener('click', newGame);
-els.fillBtn.addEventListener('click', fillFromText);
 els.calcBtn.addEventListener('click', calculate);
 els.waBtn.addEventListener('click', copyWhatsApp);
 if (navigator.share) {
@@ -807,8 +767,6 @@ if (navigator.share) {
   els.waBtn.classList.remove('ghost');
   els.waBtn.classList.add('primary');
 }
-els.photoInput.addEventListener('change', onPhoto);
-els.changePhotoBtn.addEventListener('click', () => els.photoInput.click());
 [els.feeType, els.foodType].forEach((el) =>
   el.addEventListener('change', () => {
     syncFeeControls();
