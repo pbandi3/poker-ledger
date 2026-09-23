@@ -5,11 +5,16 @@ const $ = (id) => document.getElementById(id);
 const els = {
   outstandingTable: $('outstandingTable'),
   outstandingNote: $('outstandingNote'),
+  copyReminderBtn: $('copyReminderBtn'),
   leaderboardTable: $('leaderboardTable'),
   leaderboardNote: $('leaderboardNote'),
   gamesTable: $('gamesTable'),
+  funFactsTable: $('funFactsTable'),
   toast: $('toast'),
 };
+
+// Set by renderOutstanding, read by copyReminder — avoids recomputing on click.
+let currentOutstandingRows = [];
 
 let toastTimer;
 function showToast(msg) {
@@ -64,7 +69,32 @@ function computeOutstanding(games, payments) {
   return rows.sort((a, b) => b.totalCents - a.totalCents || a.name.localeCompare(b.name));
 }
 
+function reminderText(rows) {
+  if (!rows.length) return null;
+  const lines = ['*Outstanding Payments*', ''];
+  for (const r of rows) {
+    const breakdown = r.items.map((i) => `${i.to} ${formatCents(i.amountCents)}`).join(', ');
+    lines.push(`${r.name} owes ${formatCents(r.totalCents)} (${breakdown})`);
+  }
+  const totalCents = rows.reduce((a, r) => a + r.totalCents, 0);
+  lines.push('');
+  lines.push(`${formatCents(totalCents)} total across ${rows.length} player${rows.length === 1 ? '' : 's'}.`);
+  return lines.join('\n');
+}
+
+async function copyReminder() {
+  const text = reminderText(currentOutstandingRows);
+  if (!text) return showToast('Nobody owes anything right now.');
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Copied — paste into WhatsApp');
+  } catch {
+    showToast('Copy failed — try again');
+  }
+}
+
 function renderOutstanding(rows) {
+  currentOutstandingRows = rows;
   if (!rows.length) {
     els.outstandingNote.textContent = '';
     els.outstandingTable.innerHTML =
@@ -100,26 +130,66 @@ function renderOutstanding(rows) {
     <tbody>${body}</tbody>`;
 }
 
-function renderLeaderboard(games) {
-  // Names are matched as-is across games — a spelling like "Bala" vs
-  // "Balaji" won't net together. No normalization is attempted here.
+// Names are matched as-is across games — a spelling like "Bala" vs
+// "Balaji" won't net together. No normalization is attempted here.
+// Streaks are computed over games in date order per player, treating
+// consecutive *appearances* as consecutive (a skipped game night doesn't
+// break the streak, since there's no way to tell "skipped" from "not
+// invited" from the data alone).
+function computePlayerStats(games) {
+  const sorted = [...games].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
   const byName = new Map();
-  for (const game of games) {
-    const standings = game.ledger?.standings ?? [];
-    for (const s of standings) {
+  let biggestWin = null;
+  let biggestLoss = null;
+
+  for (const game of sorted) {
+    for (const s of game.ledger?.standings ?? []) {
       if (!s?.name) continue;
-      const row = byName.get(s.name) ?? { name: s.name, games: 0, netCents: 0, best: -Infinity, worst: Infinity };
+      const net = s.netCents ?? 0;
+      const row = byName.get(s.name) ?? {
+        name: s.name,
+        games: 0,
+        netCents: 0,
+        best: -Infinity,
+        worst: Infinity,
+        hostCount: 0,
+        curWinStreak: 0,
+        curLossStreak: 0,
+        bestWinStreak: 0,
+        bestLossStreak: 0,
+      };
       row.games += 1;
-      row.netCents += s.netCents ?? 0;
-      row.best = Math.max(row.best, s.netCents ?? 0);
-      row.worst = Math.min(row.worst, s.netCents ?? 0);
+      row.netCents += net;
+      row.best = Math.max(row.best, net);
+      row.worst = Math.min(row.worst, net);
+      if (s.isHost) row.hostCount += 1;
+
+      if (net > 0) {
+        row.curWinStreak += 1;
+        row.curLossStreak = 0;
+      } else if (net < 0) {
+        row.curLossStreak += 1;
+        row.curWinStreak = 0;
+      } else {
+        row.curWinStreak = 0;
+        row.curLossStreak = 0;
+      }
+      row.bestWinStreak = Math.max(row.bestWinStreak, row.curWinStreak);
+      row.bestLossStreak = Math.max(row.bestLossStreak, row.curLossStreak);
       byName.set(s.name, row);
+
+      if (!biggestWin || net > biggestWin.netCents) biggestWin = { name: s.name, netCents: net, date: game.date };
+      if (!biggestLoss || net < biggestLoss.netCents) biggestLoss = { name: s.name, netCents: net, date: game.date };
     }
   }
 
-  const rows = [...byName.values()].sort((a, b) => b.netCents - a.netCents || a.name.localeCompare(b.name));
+  return { players: [...byName.values()], biggestWin, biggestLoss };
+}
 
-  els.leaderboardNote.textContent = rows.length ? `${rows.length} players across ${games.length} games` : '';
+function renderLeaderboard(players, gameCount) {
+  const rows = [...players].sort((a, b) => b.netCents - a.netCents || a.name.localeCompare(b.name));
+
+  els.leaderboardNote.textContent = rows.length ? `${rows.length} players across ${gameCount} games` : '';
 
   if (!rows.length) {
     els.leaderboardTable.innerHTML =
@@ -150,6 +220,60 @@ function renderLeaderboard(games) {
       </tr>
     </thead>
     <tbody>${body}</tbody>`;
+}
+
+function renderFunFacts({ players, biggestWin, biggestLoss }) {
+  if (!players.length) {
+    els.funFactsTable.innerHTML = '<tbody><tr><td class="muted">Not enough history yet.</td></tr></tbody>';
+    return;
+  }
+
+  const mostHosted = players.reduce((a, b) => (b.hostCount > (a?.hostCount ?? 0) ? b : a), null);
+  const longestWinStreak = players.reduce((a, b) => (b.bestWinStreak > (a?.bestWinStreak ?? 0) ? b : a), null);
+  const longestLossStreak = players.reduce((a, b) => (b.bestLossStreak > (a?.bestLossStreak ?? 0) ? b : a), null);
+  // "Steadiest" needs a few games to mean anything — one game is trivially steady.
+  const steadyCandidates = players.filter((p) => p.games >= 3);
+  const steadiest = steadyCandidates.reduce(
+    (a, b) => (a === null || b.best - b.worst < a.best - a.worst ? b : a),
+    null
+  );
+
+  const facts = [];
+  if (mostHosted && mostHosted.hostCount > 0) {
+    facts.push(['Most games hosted', `${escapeHtml(mostHosted.name)} — ${mostHosted.hostCount} times`]);
+  }
+  if (biggestWin) {
+    facts.push([
+      'Biggest single-night win',
+      `${escapeHtml(biggestWin.name)} — ${formatCents(biggestWin.netCents, { sign: true })}${biggestWin.date ? ` (${escapeHtml(formatDate(biggestWin.date))})` : ''}`,
+    ]);
+  }
+  if (biggestLoss) {
+    facts.push([
+      'Biggest single-night loss',
+      `${escapeHtml(biggestLoss.name)} — ${formatCents(biggestLoss.netCents, { sign: true })}${biggestLoss.date ? ` (${escapeHtml(formatDate(biggestLoss.date))})` : ''}`,
+    ]);
+  }
+  if (longestWinStreak && longestWinStreak.bestWinStreak >= 2) {
+    facts.push(['Longest winning streak', `${escapeHtml(longestWinStreak.name)} — ${longestWinStreak.bestWinStreak} games in a row`]);
+  }
+  if (longestLossStreak && longestLossStreak.bestLossStreak >= 2) {
+    facts.push(['Longest losing streak', `${escapeHtml(longestLossStreak.name)} — ${longestLossStreak.bestLossStreak} games in a row`]);
+  }
+  if (steadiest) {
+    facts.push([
+      'Steadiest player (3+ games)',
+      `${escapeHtml(steadiest.name)} — swings between ${formatCents(steadiest.worst, { sign: true })} and ${formatCents(steadiest.best, { sign: true })}`,
+    ]);
+  }
+
+  if (!facts.length) {
+    els.funFactsTable.innerHTML = '<tbody><tr><td class="muted">Not enough history yet.</td></tr></tbody>';
+    return;
+  }
+
+  const body = facts.map(([label, value]) => `<tr><td class="muted">${label}</td><td>${value}</td></tr>`).join('');
+  els.funFactsTable.innerHTML = `<tbody>${body}</tbody>`;
 }
 
 function renderGames(games, settledByGame) {
@@ -192,6 +316,7 @@ async function load() {
     els.outstandingTable.innerHTML = '<tbody><tr><td class="muted">Failed to load.</td></tr></tbody>';
     els.leaderboardTable.innerHTML = '<tbody><tr><td class="muted">Failed to load.</td></tr></tbody>';
     els.gamesTable.innerHTML = '<tbody><tr><td class="muted">Failed to load.</td></tr></tbody>';
+    els.funFactsTable.innerHTML = '<tbody><tr><td class="muted">Failed to load.</td></tr></tbody>';
     return;
   }
 
@@ -202,9 +327,13 @@ async function load() {
     settledByGame.set(p.game_id, (settledByGame.get(p.game_id) ?? 0) + 1);
   }
 
+  const stats = computePlayerStats(games ?? []);
+
+  renderLeaderboard(stats.players, (games ?? []).length);
   renderOutstanding(computeOutstanding(games ?? [], payments ?? []));
-  renderLeaderboard(games ?? []);
   renderGames(games ?? [], settledByGame);
+  renderFunFacts(stats);
 }
 
+els.copyReminderBtn.addEventListener('click', copyReminder);
 load();
