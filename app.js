@@ -11,6 +11,7 @@ import { supabase } from './src/supabaseClient.js';
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
 const SETTLED_KEY = 'poker-ledger-settled-v1';
+const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
 const APP_VERSION = 'v18';
 
@@ -43,6 +44,7 @@ const els = {
   waOut: $('waOut'),
   liveSummary: $('liveSummary'),
   installBtn: $('installBtn'),
+  playerNamesList: $('playerNamesList'),
   toast: $('toast'),
 };
 
@@ -88,6 +90,31 @@ function saveSettled() {
 
 const settled = loadSettled();
 
+// ---- Name suggestions -------------------------------------------------------
+// Cached locally (not fetched on load) so the app stays offline-first; the
+// cache is refreshed whenever "Load regulars" already talks to Supabase.
+function loadKnownNames() {
+  try {
+    return JSON.parse(localStorage.getItem(KNOWN_NAMES_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveKnownNames(names) {
+  try {
+    localStorage.setItem(KNOWN_NAMES_KEY, JSON.stringify(names));
+  } catch {
+    /* private mode */
+  }
+}
+
+function populateNameSuggestions(names) {
+  els.playerNamesList.innerHTML = names
+    .map((n) => `<option value="${escapeHtml(n)}"></option>`)
+    .join('');
+}
+
 // ---- Live tie-out strip ----------------------------------------------------
 function updateLiveSummary() {
   const rows = readRows();
@@ -121,7 +148,7 @@ function updateLiveSummary() {
 function makeRow(data = { name: '', buyIn: '', chips: '' }) {
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td class="col-name"><input class="j-name" type="text" placeholder="Name" autocomplete="off" /></td>
+    <td class="col-name"><input class="j-name" type="text" placeholder="Name" autocomplete="off" list="playerNamesList" /></td>
     <td class="col-num"><input class="j-buyin" type="text" inputmode="decimal" placeholder="def" /></td>
     <td class="col-num">
       <div class="chips-field">
@@ -708,6 +735,12 @@ async function loadRegulars() {
       for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
     }
 
+    // Refresh the name-suggestion cache with everyone ever seen, not just
+    // regulars — a one-time player's name is still worth suggesting later.
+    const allNames = [...counts.keys()].sort((a, b) => a.localeCompare(b));
+    saveKnownNames(allNames);
+    populateNameSuggestions(allNames);
+
     const regulars = [...counts.entries()]
       .filter(([, count]) => count >= MIN_REGULAR_GAMES)
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -787,6 +820,7 @@ if (navigator.share) {
 const versionEl = $('appVersion');
 if (versionEl) versionEl.textContent = ` · ${APP_VERSION}`;
 
+populateNameSuggestions(loadKnownNames());
 restore();
 
 // ---- PWA: install prompt + service worker ---------------------------------
