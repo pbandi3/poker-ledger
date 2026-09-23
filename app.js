@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
 const SETTLED_KEY = 'poker-ledger-settled-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v13';
+const APP_VERSION = 'v14';
 
 const els = {
   date: $('date'),
@@ -30,6 +30,7 @@ const els = {
   foodScope: $('foodScope'),
   playersBody: $('playersBody'),
   addRowBtn: $('addRowBtn'),
+  regularsBtn: $('regularsBtn'),
   sampleBtn: $('sampleBtn'),
   newGameBtn: $('newGameBtn'),
   calcBtn: $('calcBtn'),
@@ -729,6 +730,45 @@ function newGame() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// Pulls names from every shared game's standings and fills the roster with
+// anyone who's played MIN_REGULAR_GAMES+ times — a quick start for a group
+// that mostly repeats week to week. Leaves date/buy-in/fee settings alone.
+const MIN_REGULAR_GAMES = 3;
+
+async function loadRegulars() {
+  els.regularsBtn.disabled = true;
+  try {
+    const { data: games, error } = await supabase.from('games').select('ledger');
+    if (error) throw error;
+
+    const counts = new Map();
+    for (const g of games ?? []) {
+      const names = new Set((g.ledger?.standings ?? []).map((s) => s?.name).filter(Boolean));
+      for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+
+    const regulars = [...counts.entries()]
+      .filter(([, count]) => count >= MIN_REGULAR_GAMES)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([name]) => name);
+
+    if (!regulars.length) {
+      return showToast(`No players with ${MIN_REGULAR_GAMES}+ games yet.`);
+    }
+
+    els.playersBody.innerHTML = '';
+    regulars.forEach((name) => addRow({ name, buyIn: '', chips: '' }));
+    addRow(); // spare row for a late arrival
+    refreshHostOptions();
+    persist();
+    showToast(`Loaded ${regulars.length} regular${regulars.length === 1 ? '' : 's'} (${MIN_REGULAR_GAMES}+ games) — add chips and buy-ins`);
+  } catch (err) {
+    showToast(`Couldn't load regulars: ${err.message || 'network error'}`);
+  } finally {
+    els.regularsBtn.disabled = false;
+  }
+}
+
 function loadSample() {
   els.playersBody.innerHTML = '';
   els.date.value = todayISO();
@@ -753,6 +793,7 @@ els.addRowBtn.addEventListener('click', () => {
   addRow();
   persist();
 });
+els.regularsBtn.addEventListener('click', loadRegulars);
 els.sampleBtn.addEventListener('click', loadSample);
 els.newGameBtn.addEventListener('click', newGame);
 els.fillBtn.addEventListener('click', fillFromText);
