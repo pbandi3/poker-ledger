@@ -24,7 +24,7 @@ Three cleanly separated layers:
 | Layer | File(s) | Notes |
 | --- | --- | --- |
 | Deterministic engine | `src/engine.js` | Pure, integer-cents, no DOM. Unit-tested. |
-| UI / capture | `index.html`, `styles.css`, `app.js` | Manual/confirm entry + photo reference. |
+| UI / capture | `index.html`, `styles.css`, `app.js` | Direct entry into the players & chips table. |
 | PWA shell | `manifest.webmanifest`, `sw.js`, `icons/` | Installable + offline. |
 
 > The engine never trusts the LLM/OCR for math. Extraction (future) only fills the
