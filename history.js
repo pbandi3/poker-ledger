@@ -1,8 +1,10 @@
-import { formatCents, formatDate } from './src/engine.js';
+import { formatCents, formatDate, txnKey } from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
+  outstandingTable: $('outstandingTable'),
+  outstandingNote: $('outstandingNote'),
   leaderboardTable: $('leaderboardTable'),
   leaderboardNote: $('leaderboardNote'),
   gamesTable: $('gamesTable'),
@@ -33,6 +35,69 @@ function paymentsUrl(id) {
   const base = new URL('./pay.html', location.href);
   base.searchParams.set('g', id);
   return base.toString();
+}
+
+// One row per debtor, aggregating every unpaid transaction across every
+// game (not netted against what they're owed elsewhere — just "what do
+// they still need to pay out"), sorted by total owed, biggest first.
+function computeOutstanding(games, payments) {
+  const paidSet = new Set(
+    (payments ?? []).filter((p) => p.paid).map((p) => `${p.game_id}::${p.txn_key}`)
+  );
+
+  const byDebtor = new Map();
+  for (const game of games) {
+    for (const t of game.ledger?.transactions ?? []) {
+      if (paidSet.has(`${game.id}::${txnKey(t)}`)) continue;
+      const row = byDebtor.get(t.from) ?? { name: t.from, totalCents: 0, items: [] };
+      row.totalCents += t.amountCents;
+      row.items.push({ to: t.to, amountCents: t.amountCents, date: game.date });
+      byDebtor.set(t.from, row);
+    }
+  }
+
+  const rows = [...byDebtor.values()];
+  for (const row of rows) {
+    row.items.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+    row.oldestDate = row.items[0]?.date ?? null;
+  }
+  return rows.sort((a, b) => b.totalCents - a.totalCents || a.name.localeCompare(b.name));
+}
+
+function renderOutstanding(rows) {
+  if (!rows.length) {
+    els.outstandingNote.textContent = '';
+    els.outstandingTable.innerHTML =
+      '<tbody><tr><td class="muted">Nobody owes anything right now.</td></tr></tbody>';
+    return;
+  }
+
+  const totalCents = rows.reduce((a, r) => a + r.totalCents, 0);
+  els.outstandingNote.textContent = `${rows.length} player${rows.length === 1 ? '' : 's'} · ${formatCents(totalCents)} outstanding`;
+
+  const body = rows
+    .map((r) => {
+      const breakdown = r.items
+        .map(
+          (i) =>
+            `${escapeHtml(i.to)} ${formatCents(i.amountCents)}${i.date ? ` (${escapeHtml(formatDate(i.date))})` : ''}`
+        )
+        .join(', ');
+      return `
+        <tr>
+          <td>${escapeHtml(r.name)}</td>
+          <td class="num neg">${formatCents(r.totalCents)}</td>
+          <td class="muted small">${breakdown}</td>
+          <td class="muted small col-detail">${r.oldestDate ? escapeHtml(formatDate(r.oldestDate)) : '—'}</td>
+        </tr>`;
+    })
+    .join('');
+
+  els.outstandingTable.innerHTML = `
+    <thead>
+      <tr><th>Player</th><th class="num">Total owed</th><th>To</th><th class="col-detail">Oldest unpaid</th></tr>
+    </thead>
+    <tbody>${body}</tbody>`;
 }
 
 function renderLeaderboard(games) {
@@ -124,18 +189,20 @@ async function load() {
 
   if (gamesErr) {
     showToast("Couldn't load game history — check your connection");
+    els.outstandingTable.innerHTML = '<tbody><tr><td class="muted">Failed to load.</td></tr></tbody>';
     els.leaderboardTable.innerHTML = '<tbody><tr><td class="muted">Failed to load.</td></tr></tbody>';
     els.gamesTable.innerHTML = '<tbody><tr><td class="muted">Failed to load.</td></tr></tbody>';
     return;
   }
 
-  const { data: payments } = await supabase.from('payments').select('game_id, paid');
+  const { data: payments } = await supabase.from('payments').select('game_id, txn_key, paid');
   const settledByGame = new Map();
   for (const p of payments ?? []) {
     if (!p.paid) continue;
     settledByGame.set(p.game_id, (settledByGame.get(p.game_id) ?? 0) + 1);
   }
 
+  renderOutstanding(computeOutstanding(games ?? [], payments ?? []));
   renderLeaderboard(games ?? []);
   renderGames(games ?? [], settledByGame);
 }
