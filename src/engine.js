@@ -30,6 +30,17 @@ export const toDollars = (cents) => cents / 100;
 /** Stable identity for a settlement transaction, used to track paid status. */
 export const txnKey = (t) => `${t.from}>${t.to}:${t.amountCents}`;
 
+/**
+ * A player's poker-only result for one game (chips minus buy-in), without the
+ * host-fee / food reimbursements that are folded into netCents. Standings saved
+ * without pokerPnlCents fall back to netCents less whichever fee/food
+ * adjustments they do carry.
+ */
+export function standingPokerPnlCents(s) {
+  if (Number.isFinite(s.pokerPnlCents)) return s.pokerPnlCents;
+  return (s.netCents ?? 0) - (s.feeCents ?? 0) - (s.foodCents ?? 0);
+}
+
 /** Format integer cents as a signed currency string, e.g. -$70.00. */
 export function formatCents(cents, { sign = false } = {}) {
   const neg = cents < 0;
