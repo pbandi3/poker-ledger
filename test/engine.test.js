@@ -9,6 +9,7 @@ import {
   parseBulk,
   formatCents,
   formatWhatsApp,
+  standingPokerPnlCents,
   toCents,
   FeeType,
   FeeScope,
@@ -382,4 +383,28 @@ test('formatCents renders signs correctly', () => {
   assert.equal(formatCents(-7000), '-$70.00');
   assert.equal(formatCents(9500, { sign: true }), '+$95.00');
   assert.equal(formatCents(0, { sign: true }), '+$0.00');
+});
+
+test('standingPokerPnlCents excludes host fee and food from a real ledger', () => {
+  const l = computeLedger({
+    defaultBuyIn: 100,
+    host: 'Alice',
+    fee: { type: FeeType.PER_HEAD, value: 5, scope: FeeScope.ALL },
+    food: { recipient: 'Bob', type: FeeType.FLAT, value: 20, scope: FeeScope.ALL },
+    players: EVEN_FOUR,
+  });
+  for (const s of l.standings) {
+    // Poker result is chips minus buy-in, regardless of fee/food reimbursements.
+    assert.equal(standingPokerPnlCents(s), s.chipsCents - s.buyInCents);
+  }
+  const alice = l.standings.find((s) => s.name === 'Alice');
+  assert.notEqual(alice.netCents, standingPokerPnlCents(alice)); // host fee really is in net
+});
+
+test('standingPokerPnlCents falls back to net minus fee/food when pokerPnlCents is missing', () => {
+  assert.equal(standingPokerPnlCents({ netCents: 4500, feeCents: 5500, foodCents: -500 }), -500);
+  assert.equal(standingPokerPnlCents({ netCents: -500, feeCents: -500 }), 0);
+  // Nothing but a net (older saved games): the net is all there is to go on.
+  assert.equal(standingPokerPnlCents({ netCents: 1200 }), 1200);
+  assert.equal(standingPokerPnlCents({ netCents: 1200, pokerPnlCents: 900 }), 900);
 });

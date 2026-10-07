@@ -1,4 +1,4 @@
-import { formatCents, formatDate, txnKey } from './src/engine.js';
+import { formatCents, formatDate, standingPokerPnlCents, txnKey } from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
 
 const $ = (id) => document.getElementById(id);
@@ -132,6 +132,9 @@ function renderOutstanding(rows) {
 
 // Names are matched as-is across games — a spelling like "Bala" vs
 // "Balaji" won't net together. No normalization is attempted here.
+// Everything here is poker P&L (chips minus buy-in) — host fee and food
+// reimbursements are real money owed but not poker winnings, so they stay out
+// of lifetime totals, best/worst nights and win/loss streaks.
 // Streaks are computed over games in date order per player, treating
 // consecutive *appearances* as consecutive (a skipped game night doesn't
 // break the streak, since there's no way to tell "skipped" from "not
@@ -145,11 +148,11 @@ function computePlayerStats(games) {
   for (const game of sorted) {
     for (const s of game.ledger?.standings ?? []) {
       if (!s?.name) continue;
-      const net = s.netCents ?? 0;
+      const pnl = standingPokerPnlCents(s);
       const row = byName.get(s.name) ?? {
         name: s.name,
         games: 0,
-        netCents: 0,
+        pnlCents: 0,
         best: -Infinity,
         worst: Infinity,
         hostCount: 0,
@@ -159,15 +162,15 @@ function computePlayerStats(games) {
         bestLossStreak: 0,
       };
       row.games += 1;
-      row.netCents += net;
-      row.best = Math.max(row.best, net);
-      row.worst = Math.min(row.worst, net);
+      row.pnlCents += pnl;
+      row.best = Math.max(row.best, pnl);
+      row.worst = Math.min(row.worst, pnl);
       if (s.isHost) row.hostCount += 1;
 
-      if (net > 0) {
+      if (pnl > 0) {
         row.curWinStreak += 1;
         row.curLossStreak = 0;
-      } else if (net < 0) {
+      } else if (pnl < 0) {
         row.curLossStreak += 1;
         row.curWinStreak = 0;
       } else {
@@ -178,8 +181,8 @@ function computePlayerStats(games) {
       row.bestLossStreak = Math.max(row.bestLossStreak, row.curLossStreak);
       byName.set(s.name, row);
 
-      if (!biggestWin || net > biggestWin.netCents) biggestWin = { name: s.name, netCents: net, date: game.date };
-      if (!biggestLoss || net < biggestLoss.netCents) biggestLoss = { name: s.name, netCents: net, date: game.date };
+      if (!biggestWin || pnl > biggestWin.pnlCents) biggestWin = { name: s.name, pnlCents: pnl, date: game.date };
+      if (!biggestLoss || pnl < biggestLoss.pnlCents) biggestLoss = { name: s.name, pnlCents: pnl, date: game.date };
     }
   }
 
@@ -187,9 +190,11 @@ function computePlayerStats(games) {
 }
 
 function renderLeaderboard(players, gameCount) {
-  const rows = [...players].sort((a, b) => b.netCents - a.netCents || a.name.localeCompare(b.name));
+  const rows = [...players].sort((a, b) => b.pnlCents - a.pnlCents || a.name.localeCompare(b.name));
 
-  els.leaderboardNote.textContent = rows.length ? `${rows.length} players across ${gameCount} games` : '';
+  els.leaderboardNote.textContent = rows.length
+    ? `${rows.length} players across ${gameCount} games · poker winnings only (host fee & food excluded)`
+    : '';
 
   if (!rows.length) {
     els.leaderboardTable.innerHTML =
@@ -204,7 +209,7 @@ function renderLeaderboard(players, gameCount) {
         <td class="num">${i + 1}</td>
         <td>${escapeHtml(r.name)}</td>
         <td class="num col-detail">${r.games}</td>
-        ${pnlCell(r.netCents)}
+        ${pnlCell(r.pnlCents)}
         ${pnlCell(r.best)}
         ${pnlCell(r.worst)}
       </tr>`
@@ -216,7 +221,7 @@ function renderLeaderboard(players, gameCount) {
       <tr>
         <th class="num">#</th><th>Player</th>
         <th class="num col-detail">Games</th>
-        <th class="num">Lifetime net</th><th class="num">Best night</th><th class="num">Worst night</th>
+        <th class="num">Lifetime P&amp;L</th><th class="num">Best night</th><th class="num">Worst night</th>
       </tr>
     </thead>
     <tbody>${body}</tbody>`;
@@ -245,13 +250,13 @@ function renderFunFacts({ players, biggestWin, biggestLoss }) {
   if (biggestWin) {
     facts.push([
       'Biggest single-night win',
-      `${escapeHtml(biggestWin.name)} — ${formatCents(biggestWin.netCents, { sign: true })}${biggestWin.date ? ` (${escapeHtml(formatDate(biggestWin.date))})` : ''}`,
+      `${escapeHtml(biggestWin.name)} — ${formatCents(biggestWin.pnlCents, { sign: true })}${biggestWin.date ? ` (${escapeHtml(formatDate(biggestWin.date))})` : ''}`,
     ]);
   }
   if (biggestLoss) {
     facts.push([
       'Biggest single-night loss',
-      `${escapeHtml(biggestLoss.name)} — ${formatCents(biggestLoss.netCents, { sign: true })}${biggestLoss.date ? ` (${escapeHtml(formatDate(biggestLoss.date))})` : ''}`,
+      `${escapeHtml(biggestLoss.name)} — ${formatCents(biggestLoss.pnlCents, { sign: true })}${biggestLoss.date ? ` (${escapeHtml(formatDate(biggestLoss.date))})` : ''}`,
     ]);
   }
   if (longestWinStreak && longestWinStreak.bestWinStreak >= 2) {
