@@ -37,6 +37,13 @@ create policy "payments_select_anon" on payments for select to anon using (true)
 create policy "payments_insert_anon" on payments for insert to anon with check (true);
 create policy "payments_update_anon" on payments for update to anon using (true) with check (true);
 
+-- Supabase stops auto-granting Data API access to new "public" tables from
+-- 2026-10-30, so spell out the table privileges. They mirror the policies above
+-- exactly (no delete anywhere): RLS decides which rows, these GRANTs decide
+-- whether the anon role may touch the table at all. Safe to re-run.
+grant select, insert, update on public.games to anon;
+grant select, insert, update on public.payments to anon;
+
 -- Live updates so the host's own tab and everyone's phone stay in sync
 -- without a manual refresh.
 alter publication supabase_realtime add table payments;
