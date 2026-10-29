@@ -15,7 +15,7 @@ const SETTLED_KEY = 'poker-ledger-settled-v1';
 const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
 const DRAFT_KEY = 'poker-ledger-draft-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v22';
+const APP_VERSION = 'v23';
 
 const els = {
   date: $('date'),
@@ -47,6 +47,8 @@ const els = {
   liveSummary: $('liveSummary'),
   installBtn: $('installBtn'),
   playerNamesList: $('playerNamesList'),
+  liveCard: $('liveCard'),
+  testToggle: $('testToggle'),
   liveOff: $('liveOff'),
   liveOn: $('liveOn'),
   liveStartBtn: $('liveStartBtn'),
@@ -258,7 +260,7 @@ function refreshHostOptions() {
 // ---- Persistence -----------------------------------------------------------
 function persist() {
   if (draft) trackDraftChanges();
-  const state = { ...readSettings(), rows: liveRows() };
+  const state = { ...readSettings(), rows: liveRows(), test: testMode };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -275,6 +277,7 @@ function restore() {
   } catch {
     state = null;
   }
+  testMode = !!state?.test;
   if (state && Array.isArray(state.rows) && state.rows.length) {
     els.date.value = state.date ?? todayISO();
     els.buyIn.value = state.buyIn ?? '100';
@@ -493,7 +496,7 @@ function renderSettlement(ledger) {
       tr.classList.toggle('settled', box.checked);
       saveSettled();
       updateTxnProgress(ledger);
-      if (currentGameId) {
+      if (currentGameId && !testMode) {
         supabase
           .from('payments')
           .upsert({
@@ -589,6 +592,7 @@ function stopSharing() {
 // Publishes (or updates) the settlement plan in Supabase and returns its
 // payment link. Throws on failure — callers decide how to degrade.
 async function publishForPayment(ledger) {
+  if (testMode) throw new Error('test game — nothing is saved online');
   const snapshot = {
     date: ledger.date,
     host: ledger.host,
@@ -647,6 +651,8 @@ let draftChannel = null;
 let draftPushTimer = null;
 let draftPushing = false;
 let draftPushAgain = false;
+// A test game is never sent to Supabase: no live sync, no pay link, no saved game.
+let testMode = false;
 let lastServerJson = ''; // stableStringify of the last state known to match the server
 
 // Row ids sort in creation order (time, then a counter for rows made in the same
@@ -862,8 +868,12 @@ function setSyncStatus(status) {
 }
 
 function renderLiveBar() {
-  els.liveOff.hidden = !!draft;
+  els.liveOff.hidden = !!draft || testMode;
   els.liveOn.hidden = !draft;
+  els.testToggle.checked = testMode;
+  // Once a game is live or has a pay link it is already saved online.
+  els.testToggle.disabled = !!draft || !!currentGameId;
+  els.liveCard.classList.toggle('is-test', testMode);
   els.liveLinkBtn.textContent = navigator.share ? 'Share link' : 'Copy link';
 }
 
@@ -875,7 +885,7 @@ function scheduleDraftPush() {
 }
 
 async function pushDraft() {
-  if (!draft) return;
+  if (!draft || testMode) return;
   if (draftPushing) {
     draftPushAgain = true;
     return;
@@ -1007,6 +1017,7 @@ function leaveDraft() {
 }
 
 async function startLiveGame() {
+  if (testMode) return showToast("Test games aren't shared — untick Test game first");
   els.liveStartBtn.disabled = true;
   try {
     const now = Date.now();
@@ -1067,6 +1078,7 @@ async function joinDraft(id) {
       return;
     }
     leaveDraft();
+    testMode = false; // a game you join is a real, shared one
     els.playersBody.innerHTML = '';
     els.results.hidden = true;
     els.warnings.hidden = true;
@@ -1141,14 +1153,15 @@ async function blastText() {
   if (!ledger) return null;
 
   let payLink = null;
-  if (ledger.balanced && ledger.transactions.length) {
+  if (!testMode && ledger.balanced && ledger.transactions.length) {
     try {
       payLink = await publishForPayment(ledger);
+      renderLiveBar(); // now saved online, so it can no longer be a test game
     } catch (err) {
       showToast(`Payment link unavailable (${err.message || 'network error'}) — sharing standings only`);
     }
   }
-  return formatWhatsApp(ledger, { title: 'Poker Night', payLink });
+  return formatWhatsApp(ledger, { title: testMode ? 'Poker Night (Test)' : 'Poker Night', payLink });
 }
 
 async function copyWhatsApp() {
@@ -1158,7 +1171,7 @@ async function copyWhatsApp() {
   els.waOut.hidden = false;
   try {
     await navigator.clipboard.writeText(text);
-    showToast('Copied — paste into WhatsApp');
+    showToast(testMode ? 'Copied (test game — no pay link)' : 'Copied — paste into WhatsApp');
   } catch {
     showToast('Copy failed — long-press the text to copy');
   }
@@ -1228,6 +1241,8 @@ function newGame() {
   els.waOut.hidden = true;
   window.__ledger = null;
   stopSharing();
+  testMode = false;
+  renderLiveBar();
 
   syncFeeControls();
   persist();
@@ -1308,6 +1323,25 @@ els.regularsBtn.addEventListener('click', loadRegulars);
 els.sampleBtn.addEventListener('click', loadSample);
 els.newGameBtn.addEventListener('click', newGame);
 els.liveStartBtn.addEventListener('click', startLiveGame);
+els.testToggle.addEventListener('change', () => {
+  if (els.testToggle.checked && (draft || currentGameId)) {
+    els.testToggle.checked = false;
+    showToast('This game is already saved online');
+    return;
+  }
+  const leavingTest = testMode && !els.testToggle.checked;
+  testMode = els.testToggle.checked;
+  if (leavingTest) {
+    // Payment ticks are remembered by payer/payee/amount, not by game, so ticks
+    // made during a test would otherwise be published with the real game.
+    settled.clear();
+    saveSettled();
+    if (window.__ledger) renderSettlement(window.__ledger);
+  }
+  renderLiveBar();
+  persist();
+  showToast(testMode ? 'Test game — nothing will be saved online' : 'Back to a real game');
+});
 els.liveLinkBtn.addEventListener('click', shareLiveLink);
 els.liveStopBtn.addEventListener('click', () => {
   if (!confirm('Stop syncing on this phone? Your copy stays here; other phones keep the shared game.')) return;
@@ -1346,6 +1380,7 @@ if (versionEl) versionEl.textContent = ` · ${APP_VERSION}`;
 
 populateNameSuggestions(loadKnownNames());
 restore();
+renderLiveBar();
 resumeOrJoinDraft();
 
 // ---- PWA: install prompt + service worker ---------------------------------

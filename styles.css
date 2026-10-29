@@ -661,3 +661,23 @@ table.report.leaderboard .lbl-short {
 .live-dot[data-state='offline'] {
   background: var(--danger);
 }
+
+/* Test game switch (lives in the live game card) */
+.test-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.live-row:not([hidden]) ~ .test-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.live-card.is-test {
+  border-color: var(--warn);
+}
+.live-card.is-test .test-row b {
+  color: var(--warn);
+}
