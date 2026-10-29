@@ -47,3 +47,5 @@ grant select, insert, update on public.payments to anon;
 -- Live updates so the host's own tab and everyone's phone stay in sync
 -- without a manual refresh.
 alter publication supabase_realtime add table payments;
+
+-- Live shared game (two phones, one game): also run supabase/drafts.sql.

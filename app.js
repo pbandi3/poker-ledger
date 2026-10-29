@@ -7,13 +7,15 @@ import {
   txnKey,
 } from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
+import { mergeDraftStates, stableStringify } from './src/draft.js';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
 const SETTLED_KEY = 'poker-ledger-settled-v1';
 const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
+const DRAFT_KEY = 'poker-ledger-draft-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v21';
+const APP_VERSION = 'v22';
 
 const els = {
   date: $('date'),
@@ -45,6 +47,13 @@ const els = {
   liveSummary: $('liveSummary'),
   installBtn: $('installBtn'),
   playerNamesList: $('playerNamesList'),
+  liveOff: $('liveOff'),
+  liveOn: $('liveOn'),
+  liveStartBtn: $('liveStartBtn'),
+  liveLinkBtn: $('liveLinkBtn'),
+  liveStopBtn: $('liveStopBtn'),
+  liveDot: $('liveDot'),
+  liveStatus: $('liveStatus'),
   toast: $('toast'),
 };
 
@@ -161,6 +170,10 @@ function makeRow(data = { name: '', buyIn: '', chips: '' }) {
   tr.querySelector('.j-buyin').value = data.buyIn ?? '';
   const chipsInput = tr.querySelector('.j-chips');
   chipsInput.value = data.chips ?? '';
+  // Identity + last-edit time let two phones merge the same row (see src/draft.js).
+  tr.dataset.rid = data.id || newRowId();
+  tr.dataset.t = String(Number(data.t) || 0);
+  tr.dataset.sig = rowSig(tr);
   tr.querySelector('.row-x').addEventListener('click', () => {
     tr.remove();
     refreshHostOptions();
@@ -178,6 +191,7 @@ function makeRow(data = { name: '', buyIn: '', chips: '' }) {
     chipsInput.focus();
   });
   updateNegativeState();
+  tr._refreshNegative = updateNegativeState;
   tr.querySelectorAll('input').forEach((inp) => {
     inp.addEventListener('input', () => {
       if (inp.classList.contains('j-name')) refreshHostOptions();
@@ -243,25 +257,15 @@ function refreshHostOptions() {
 
 // ---- Persistence -----------------------------------------------------------
 function persist() {
-  const state = {
-    date: els.date.value,
-    buyIn: els.buyIn.value,
-    host: els.host.value,
-    feeType: els.feeType.value,
-    feeValue: els.feeValue.value,
-    feeScope: els.feeScope.value,
-    foodRecipient: els.foodRecipient.value,
-    foodType: els.foodType.value,
-    foodValue: els.foodValue.value,
-    foodScope: els.foodScope.value,
-    rows: readRows(),
-  };
+  if (draft) trackDraftChanges();
+  const state = { ...readSettings(), rows: liveRows() };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
     /* storage full / private mode — non-fatal */
   }
   updateLiveSummary();
+  if (draft) scheduleDraftPush();
 }
 
 function restore() {
@@ -592,7 +596,18 @@ async function publishForPayment(ledger) {
     transactions: ledger.transactions,
     netSumCents: ledger.netSumCents,
   };
-  if (!currentGameId) {
+  if (!currentGameId && draft) {
+    // Every phone on a live game must publish to the same game row and pay link.
+    const id = await claimDraftGameId();
+    const { error } = await supabase.from('games').upsert(
+      { id, date: ledger.date, host: ledger.host, ledger: snapshot, updated_at: new Date().toISOString() },
+      { onConflict: 'id' }
+    );
+    if (error) throw error;
+    currentGameId = id;
+    await pushLocalPaymentsToSupabase(ledger);
+    subscribeToPayments();
+  } else if (!currentGameId) {
     let id = genGameId();
     for (let attempt = 0; ; attempt += 1) {
       const { error } = await supabase
@@ -620,6 +635,504 @@ async function publishForPayment(ledger) {
     if (error) throw error;
   }
   return paymentsUrl(currentGameId);
+}
+
+// ---- Live shared game (Supabase) --------------------------------------------
+// Two phones, one game. The in-progress game lives in a `drafts` row that every
+// phone saves to and listens on. A phone only saves if the version it started
+// from is still current; otherwise it merges the newer copy in first (see
+// src/draft.js), so one phone never silently overwrites the other.
+let draft = null; // { id, version, removed, settingsT, settingsSig, lastRows, maxT } — also kept in localStorage
+let draftChannel = null;
+let draftPushTimer = null;
+let draftPushing = false;
+let draftPushAgain = false;
+let lastServerJson = ''; // stableStringify of the last state known to match the server
+
+// Row ids sort in creation order (time, then a counter for rows made in the same
+// millisecond), so the shared row list has one natural order on every phone.
+let rowSeq = 0;
+function newRowId() {
+  rowSeq = (rowSeq + 1) % 46656;
+  return Date.now().toString(36) + rowSeq.toString(36).padStart(3, '0') + genGameId().slice(0, 3);
+}
+
+// Edit timestamps must beat everything this phone has already seen, even when its
+// clock runs behind the other phone's, so an edit made after seeing a change
+// always wins over it.
+function nextT() {
+  const t = Math.max(Date.now(), (draft?.maxT ?? 0) + 1);
+  if (draft) draft.maxT = t;
+  return t;
+}
+
+function noteMaxT(state) {
+  draft.maxT = Math.max(
+    draft.maxT ?? 0,
+    state.settingsT ?? 0,
+    ...state.rows.map((r) => r.t ?? 0),
+    ...Object.values(state.removed ?? {})
+  );
+}
+
+function readSettings() {
+  return {
+    date: els.date.value,
+    buyIn: els.buyIn.value,
+    host: els.host.value,
+    feeType: els.feeType.value,
+    feeValue: els.feeValue.value,
+    feeScope: els.feeScope.value,
+    foodRecipient: els.foodRecipient.value,
+    foodType: els.foodType.value,
+    foodValue: els.foodValue.value,
+    foodScope: els.foodScope.value,
+  };
+}
+
+const rowSig = (tr) =>
+  ['.j-name', '.j-buyin', '.j-chips'].map((cls) => tr.querySelector(cls).value).join('\u0001');
+const isRowEmpty = (tr) => [...tr.querySelectorAll('input')].every((i) => i.value.trim() === '');
+
+// A row is part of the shared game once anything is typed in it; the empty
+// spare row at the bottom stays private to each phone.
+function liveRows() {
+  return [...els.playersBody.querySelectorAll('tr')]
+    .map((tr) => ({
+      id: tr.dataset.rid,
+      name: tr.querySelector('.j-name').value.trim(),
+      buyIn: tr.querySelector('.j-buyin').value.trim(),
+      chips: tr.querySelector('.j-chips').value.trim(),
+      t: Number(tr.dataset.t) || 0,
+    }))
+    .filter((r) => r.name || r.buyIn || r.chips);
+}
+
+function loadDraftMeta() {
+  try {
+    return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function saveDraftMeta() {
+  try {
+    if (draft) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* private mode */
+  }
+}
+
+function buildDraftState() {
+  return {
+    settings: readSettings(),
+    settingsT: draft.settingsT,
+    rows: liveRows().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    removed: { ...draft.removed },
+  };
+}
+
+// Runs on every local change: stamp what was edited, record removed rows, and
+// keep the saved bookkeeping current (so a reload can't lose a removal).
+function trackDraftChanges() {
+  const now = nextT();
+  for (const tr of els.playersBody.querySelectorAll('tr')) {
+    const sig = rowSig(tr);
+    if (sig !== tr.dataset.sig) {
+      tr.dataset.sig = sig;
+      tr.dataset.t = String(now);
+    }
+  }
+  const settingsSig = JSON.stringify(readSettings());
+  if (settingsSig !== draft.settingsSig) {
+    draft.settingsSig = settingsSig;
+    draft.settingsT = now;
+  }
+  const ids = liveRows().map((r) => r.id);
+  const alive = new Set(ids);
+  for (const id of draft.lastRows) if (!alive.has(id)) draft.removed[id] = now;
+  draft.lastRows = ids;
+  saveDraftMeta();
+}
+
+// Write a merged state into the page without touching whatever the person is
+// typing in right now, and without counting it as a local edit.
+function applyDraftState(state) {
+  const s = state.settings ?? {};
+  let selectUnsettable = false;
+  const setField = (el, value) => {
+    if (value !== undefined && el.value !== value) el.value = value;
+  };
+  const setSelect = (el, value) => {
+    if (value === undefined || el.value === value) return;
+    if ([...el.options].some((o) => o.value === value)) el.value = value;
+    else selectUnsettable = true; // e.g. the host's row isn't here; this phone's choice stands
+  };
+  setField(els.date, s.date);
+  setField(els.buyIn, s.buyIn);
+  setField(els.feeType, s.feeType);
+  setField(els.feeValue, s.feeValue);
+  setField(els.feeScope, s.feeScope);
+  setField(els.foodType, s.foodType);
+  setField(els.foodValue, s.foodValue);
+  setField(els.foodScope, s.foodScope);
+
+  const wanted = new Set(state.rows.map((r) => r.id));
+  for (const tr of [...els.playersBody.querySelectorAll('tr')]) {
+    if (!wanted.has(tr.dataset.rid) && !isRowEmpty(tr)) tr.remove(); // removed on another phone
+  }
+  const have = new Map([...els.playersBody.querySelectorAll('tr')].map((tr) => [tr.dataset.rid, tr]));
+  for (const r of state.rows) {
+    const tr = have.get(r.id);
+    if (!tr) {
+      const fresh = makeRow(r);
+      const last = els.playersBody.lastElementChild;
+      if (last && isRowEmpty(last)) els.playersBody.insertBefore(fresh, last);
+      else els.playersBody.appendChild(fresh);
+      continue;
+    }
+    for (const [cls, key] of [
+      ['.j-name', 'name'],
+      ['.j-buyin', 'buyIn'],
+      ['.j-chips', 'chips'],
+    ]) {
+      const input = tr.querySelector(cls);
+      const value = r[key] ?? '';
+      if (input.value !== value) input.value = value;
+    }
+    tr._refreshNegative?.();
+    tr.dataset.t = String(r.t ?? 0);
+    tr.dataset.sig = rowSig(tr);
+  }
+
+  refreshHostOptions();
+  setSelect(els.host, s.host);
+  setSelect(els.foodRecipient, s.foodRecipient);
+  syncFeeControls();
+  const last = els.playersBody.lastElementChild;
+  if (!last) addRow();
+  else appendRowIfLastIsUsed(last);
+
+  noteMaxT(state);
+  draft.settingsT = selectUnsettable ? nextT() : (state.settingsT ?? 0);
+  draft.settingsSig = JSON.stringify(readSettings());
+  draft.removed = { ...state.removed };
+  draft.lastRows = liveRows().map((r) => r.id);
+  saveDraftMeta();
+  updateLiveSummary();
+}
+
+function adoptGameId(row) {
+  if (row?.game_id && !currentGameId) {
+    currentGameId = row.game_id;
+    subscribeToPayments();
+  }
+}
+
+// Merge a copy from the server into this phone (no network, no persist).
+function mergeRemote(remote) {
+  if (draft.maxT === undefined) draft.maxT = 0;
+  applyDraftState(mergeDraftStates(buildDraftState(), remote.state));
+  draft.version = Math.max(draft.version, remote.version);
+  adoptGameId(remote);
+}
+
+function adoptRemote(remote) {
+  mergeRemote(remote);
+  const remoteJson = stableStringify(remote.state);
+  if (stableStringify(buildDraftState()) === remoteJson) lastServerJson = remoteJson;
+  persist(); // saves locally; schedules a push only if this phone still has newer edits
+}
+
+async function fetchDraftRow(id) {
+  const { data, error } = await supabase
+    .from('drafts')
+    .select('state, version, game_id')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+function setSyncStatus(status) {
+  els.liveStatus.textContent = { ok: 'Synced', pending: 'Saving…', offline: 'Offline — will retry' }[status];
+  els.liveDot.dataset.state = status;
+}
+
+function renderLiveBar() {
+  els.liveOff.hidden = !!draft;
+  els.liveOn.hidden = !draft;
+  els.liveLinkBtn.textContent = navigator.share ? 'Share link' : 'Copy link';
+}
+
+function scheduleDraftPush() {
+  if (!draft) return;
+  setSyncStatus('pending');
+  clearTimeout(draftPushTimer);
+  draftPushTimer = setTimeout(pushDraft, 700);
+}
+
+async function pushDraft() {
+  if (!draft) return;
+  if (draftPushing) {
+    draftPushAgain = true;
+    return;
+  }
+  draftPushing = true;
+  try {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const state = buildDraftState();
+      if (stableStringify(state) === lastServerJson) {
+        setSyncStatus('ok');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('drafts')
+        .update({ state, version: draft.version + 1, updated_at: new Date().toISOString() })
+        .eq('id', draft.id)
+        .eq('version', draft.version)
+        .select('version, game_id');
+      if (error) throw error;
+      if (data.length === 1) {
+        draft.version = data[0].version;
+        lastServerJson = stableStringify(state);
+        adoptGameId(data[0]);
+        saveDraftMeta();
+        setSyncStatus('ok');
+        return;
+      }
+      // Another phone saved first: merge their copy in, then save on top of it.
+      const remote = await fetchDraftRow(draft.id);
+      if (!remote) throw new Error('shared game not found');
+      mergeRemote(remote);
+    }
+    draftPushAgain = true; // still racing another phone; try again shortly
+  } catch {
+    setSyncStatus('offline');
+    clearTimeout(draftPushTimer);
+    draftPushTimer = setTimeout(scheduleDraftPush, 5000);
+  } finally {
+    draftPushing = false;
+    if (draftPushAgain) {
+      draftPushAgain = false;
+      scheduleDraftPush();
+    }
+  }
+}
+
+// Catch up on anything missed (phone asleep, connection dropped) and save
+// anything this phone changed while it was away.
+async function refreshDraft() {
+  if (!draft) return;
+  try {
+    const remote = await fetchDraftRow(draft.id);
+    if (!remote) return;
+    adoptGameId(remote);
+    if (remote.version > draft.version) {
+      adoptRemote(remote);
+      return;
+    }
+    const local = stableStringify(buildDraftState());
+    if (local === stableStringify(remote.state)) {
+      lastServerJson = local;
+      setSyncStatus('ok');
+    } else {
+      scheduleDraftPush();
+    }
+  } catch {
+    setSyncStatus('offline');
+  }
+}
+
+function subscribeToDraft() {
+  if (draftChannel) supabase.removeChannel(draftChannel);
+  draftChannel = supabase
+    .channel(`draft-${draft.id}`)
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'drafts', filter: `id=eq.${draft.id}` },
+      (payload) => {
+        const row = payload.new;
+        if (!row || !draft) return;
+        adoptGameId(row); // the game id can arrive without a version bump
+        if (row.version > draft.version) adoptRemote(row);
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') refreshDraft();
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setSyncStatus('offline');
+    });
+}
+
+function liveUrl() {
+  const url = new URL('./index.html', location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('d', draft.id);
+  return url.toString();
+}
+
+async function shareLiveLink() {
+  if (!draft) return;
+  const url = liveUrl();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Poker Night — live game', text: 'Join the live game:', url });
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Link copied — open it on the other phone');
+  } catch {
+    showToast(url);
+  }
+}
+
+function leaveDraft() {
+  if (draftChannel) {
+    supabase.removeChannel(draftChannel);
+    draftChannel = null;
+  }
+  clearTimeout(draftPushTimer);
+  draft = null;
+  lastServerJson = '';
+  draftPushAgain = false;
+  saveDraftMeta();
+  renderLiveBar();
+}
+
+async function startLiveGame() {
+  els.liveStartBtn.disabled = true;
+  try {
+    const now = Date.now();
+    for (const tr of els.playersBody.querySelectorAll('tr')) {
+      tr.dataset.sig = rowSig(tr);
+      tr.dataset.t = String(now);
+    }
+    const candidate = {
+      id: genGameId(),
+      version: 1,
+      removed: {},
+      settingsT: now,
+      settingsSig: JSON.stringify(readSettings()),
+      lastRows: liveRows().map((r) => r.id),
+      maxT: now,
+    };
+    draft = candidate; // only so buildDraftState can read it
+    const state = buildDraftState();
+    draft = null; // not shared until the server has it
+    for (let attempt = 0; ; attempt += 1) {
+      const { error } = await supabase.from('drafts').insert({ id: candidate.id, state, version: 1 });
+      if (!error) break;
+      if (error.code !== '23505' || attempt >= 2) throw error;
+      candidate.id = genGameId();
+    }
+    draft = candidate;
+    lastServerJson = stableStringify(state);
+    saveDraftMeta();
+    subscribeToDraft();
+    setSyncStatus('ok');
+    renderLiveBar();
+    trackDraftChanges(); // anything typed while the request was in flight
+    scheduleDraftPush();
+    showToast('Live game started — tap Share link to send it to your other phone');
+  } catch (err) {
+    draft = null;
+    saveDraftMeta();
+    renderLiveBar();
+    const missing = /drafts|schema cache/i.test(err.message || '');
+    showToast(
+      missing
+        ? "Live game isn't set up yet — run supabase/drafts.sql in Supabase first"
+        : `Couldn't start live game: ${err.message || 'network error'}`
+    );
+  } finally {
+    els.liveStartBtn.disabled = false;
+  }
+}
+
+async function joinDraft(id) {
+  if (liveRows().length > 0 && !confirm('Join this shared game? It replaces the game currently on this phone.')) {
+    return;
+  }
+  try {
+    const remote = await fetchDraftRow(id);
+    if (!remote) {
+      showToast('That shared game was not found');
+      return;
+    }
+    leaveDraft();
+    els.playersBody.innerHTML = '';
+    els.results.hidden = true;
+    els.warnings.hidden = true;
+    els.waOut.hidden = true;
+    window.__ledger = null;
+    stopSharing();
+    draft = {
+      id,
+      version: 0,
+      removed: {},
+      settingsT: 0,
+      settingsSig: JSON.stringify(readSettings()),
+      lastRows: [],
+      maxT: 0,
+    };
+    adoptRemote(remote);
+    subscribeToDraft();
+    renderLiveBar();
+    setSyncStatus('ok');
+    history.replaceState(null, '', location.pathname);
+    showToast('Joined the shared game');
+  } catch (err) {
+    showToast(`Couldn't join: ${err.message || 'network error'}`);
+  }
+}
+
+// On load: open a shared link if one was tapped, otherwise rejoin the shared
+// game this phone was already in.
+async function resumeOrJoinDraft() {
+  const joinId = new URLSearchParams(location.search).get('d');
+  const saved = loadDraftMeta();
+  if (joinId && saved?.id !== joinId) return joinDraft(joinId);
+  if (joinId) history.replaceState(null, '', location.pathname);
+  if (!saved) return;
+  draft = saved;
+  lastServerJson = '';
+  subscribeToDraft();
+  renderLiveBar();
+  setSyncStatus('pending');
+  await refreshDraft();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!draft) return;
+  if (document.hidden) pushDraft();
+  else refreshDraft();
+});
+window.addEventListener('online', refreshDraft);
+
+// Every phone on a live game publishes to the same game row: the first one to
+// publish claims a game id on the draft, the others reuse it.
+async function claimDraftGameId() {
+  const existing = await fetchDraftRow(draft.id);
+  if (existing?.game_id) return existing.game_id;
+  const id = genGameId();
+  const { data, error } = await supabase
+    .from('drafts')
+    .update({ game_id: id })
+    .eq('id', draft.id)
+    .is('game_id', null)
+    .select('game_id');
+  if (error) throw error;
+  if (data.length === 1) return id;
+  const again = await fetchDraftRow(draft.id); // another phone claimed it first
+  if (again?.game_id) return again.game_id;
+  throw new Error('could not agree on a game id');
 }
 
 // ---- WhatsApp export -------------------------------------------------------
@@ -681,7 +1194,11 @@ function escapeHtml(s) {
 // Autosave keeps a night's ledger safe across accidental reloads / phone locks,
 // so a refresh intentionally restores. "New game" is the explicit way to wipe.
 function newGame() {
-  if (!confirm('Start a new game? This clears all players, chips and settings.')) return;
+  const msg = draft
+    ? 'Start a new game? This clears this phone and stops syncing it; the shared game stays on your other phones.'
+    : 'Start a new game? This clears all players, chips and settings.';
+  if (!confirm(msg)) return;
+  leaveDraft();
 
   try {
     localStorage.removeItem(STORAGE_KEY);
@@ -790,6 +1307,13 @@ els.addRowBtn.addEventListener('click', () => {
 els.regularsBtn.addEventListener('click', loadRegulars);
 els.sampleBtn.addEventListener('click', loadSample);
 els.newGameBtn.addEventListener('click', newGame);
+els.liveStartBtn.addEventListener('click', startLiveGame);
+els.liveLinkBtn.addEventListener('click', shareLiveLink);
+els.liveStopBtn.addEventListener('click', () => {
+  if (!confirm('Stop syncing on this phone? Your copy stays here; other phones keep the shared game.')) return;
+  leaveDraft();
+  showToast('Stopped syncing on this phone');
+});
 els.calcBtn.addEventListener('click', calculate);
 els.waBtn.addEventListener('click', copyWhatsApp);
 if (navigator.share) {
@@ -822,6 +1346,7 @@ if (versionEl) versionEl.textContent = ` · ${APP_VERSION}`;
 
 populateNameSuggestions(loadKnownNames());
 restore();
+resumeOrJoinDraft();
 
 // ---- PWA: install prompt + service worker ---------------------------------
 let deferredPrompt = null;

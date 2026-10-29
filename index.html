@@ -34,6 +34,27 @@
     </header>
 
     <main>
+      <!-- Live shared game: finish this game on another phone -->
+      <section class="card live-card" id="liveCard">
+        <div class="live-row" id="liveOff">
+          <div class="live-copy">
+            <b>Two phones, one game</b>
+            <span class="muted small">Start a live game, then open the link on another phone.</span>
+          </div>
+          <button id="liveStartBtn" class="ghost small">Start live game</button>
+        </div>
+        <div class="live-row" id="liveOn" hidden>
+          <div class="live-copy">
+            <b><span class="live-dot" id="liveDot" data-state="ok"></span>Live game</b>
+            <span class="muted small"><span id="liveStatus">Synced</span> · anyone with the link can edit</span>
+          </div>
+          <div class="head-actions">
+            <button id="liveLinkBtn" class="ghost small">Copy link</button>
+            <button id="liveStopBtn" class="ghost small danger">Stop</button>
+          </div>
+        </div>
+      </section>
+
       <!-- Settings -->
       <section class="card">
         <div class="card-head"><h2>1 · Game settings</h2></div>
@@ -168,7 +189,7 @@
     </main>
 
     <footer class="foot muted small">
-      Runs on your device · nothing leaves it unless you copy or share standings · offline-ready
+      Runs on your device · nothing leaves it unless you copy or share standings or start a live game · offline-ready
       <span id="appVersion" class="version"></span>
     </footer>
 
