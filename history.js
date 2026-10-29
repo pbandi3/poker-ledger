@@ -190,13 +190,14 @@ function computePlayerStats(games) {
 }
 
 // Sortable columns. Text sorts A-Z first; numbers sort biggest-first first.
+// `short` is the compact header used on phones so every column fits.
 // The # column is always the lifetime-P&L rank, whatever the sort order.
 const LEADERBOARD_COLUMNS = [
   { key: 'name', label: 'Player', cls: '', firstDir: 'asc' },
-  { key: 'games', label: 'Games', cls: 'num col-detail', firstDir: 'desc' },
-  { key: 'pnlCents', label: 'Lifetime P&amp;L', cls: 'num', firstDir: 'desc' },
-  { key: 'best', label: 'Best night', cls: 'num', firstDir: 'desc' },
-  { key: 'worst', label: 'Worst night', cls: 'num', firstDir: 'desc' },
+  { key: 'games', label: 'Games', short: 'Gms', cls: 'num col-detail', firstDir: 'desc' },
+  { key: 'pnlCents', label: 'Lifetime P&amp;L', short: 'P&amp;L', cls: 'num', firstDir: 'desc' },
+  { key: 'best', label: 'Best night', short: 'Best', cls: 'num', firstDir: 'desc' },
+  { key: 'worst', label: 'Worst night', short: 'Worst', cls: 'num', firstDir: 'desc' },
 ];
 let leaderboard = { players: [], gameCount: 0 };
 let leaderboardSort = { key: 'pnlCents', dir: 'desc' };
@@ -210,11 +211,11 @@ function sortedLeaderboardPlayers() {
   });
 }
 
-function sortHeader({ key, label, cls }) {
+function sortHeader({ key, label, short, cls }) {
   const active = leaderboardSort.key === key;
   const ariaSort = active ? (leaderboardSort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
   const arrow = active ? (leaderboardSort.dir === 'asc' ? '▲' : '▼') : '↕';
-  return `<th class="${cls}" aria-sort="${ariaSort}"><button type="button" class="sort-btn" data-key="${key}">${label}<span class="sort-arrow" aria-hidden="true">${arrow}</span></button></th>`;
+  return `<th class="${cls}" aria-sort="${ariaSort}"><button type="button" class="sort-btn" data-key="${key}">${short ? `<span class="lbl-full">${label}</span><span class="lbl-short" aria-hidden="true">${short}</span>` : label}<span class="sort-arrow" aria-hidden="true">${arrow}</span></button></th>`;
 }
 
 function drawLeaderboard() {
