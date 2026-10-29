@@ -9,6 +9,22 @@
       name="description"
       content="Mark poker night payments as paid — shared live with everyone in the game."
     />
+    <!-- Link preview card (WhatsApp, iMessage, Slack...). Crawlers don't run JS and
+         the site is static, so this is the same card for every game. The image
+         URL must be absolute; rebuild it with scripts/gen-og-image.sh. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Poker Night Ledger" />
+    <meta property="og:title" content="Poker Night — Settle up" />
+    <meta
+      property="og:description"
+      content="Tap your payment to mark it paid. Updates live for everyone in the group."
+    />
+    <meta property="og:image" content="https://pbandi3.github.io/poker-ledger/og-image.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Poker chip with the words Poker Night, Settle up" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" href="./icons/icon.svg" />

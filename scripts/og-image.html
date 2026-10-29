@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* Source for og-image.png (the WhatsApp/social link-preview card).
+         Rebuild with: bash scripts/gen-og-image.sh */
+      * { box-sizing: border-box; margin: 0; }
+      html, body { width: 1200px; height: 630px; overflow: hidden; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        color: #e8edf6;
+        background:
+          radial-gradient(900px 520px at 18% 50%, rgba(46, 204, 113, 0.22) 0%, rgba(46, 204, 113, 0) 70%),
+          radial-gradient(1200px 700px at 50% -20%, #1b2c49 0%, #0b1220 65%);
+        display: flex;
+        align-items: center;
+        padding: 0 90px;
+        gap: 80px;
+      }
+      .chip {
+        flex: 0 0 360px;
+        width: 360px;
+        height: 360px;
+        border-radius: 50%;
+        background: repeating-conic-gradient(#2ecc71 0 18deg, #0f5132 18deg 36deg);
+        border: 14px solid #d7e2ff;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 0 0 10px rgba(255, 255, 255, 0.08);
+        position: relative;
+      }
+      .chip::after {
+        content: "";
+        position: absolute;
+        inset: 78px;
+        border-radius: 50%;
+        background: #0b1220;
+        border: 10px solid #d7e2ff;
+        box-shadow: inset 0 0 30px rgba(46, 204, 113, 0.25);
+      }
+      .text { display: flex; flex-direction: column; }
+      .kicker { font-size: 28px; letter-spacing: 6px; text-transform: uppercase; color: #93a1bb; font-weight: 600; }
+      h1 { font-size: 100px; line-height: 1.02; font-weight: 800; letter-spacing: -2px; margin-top: 14px; }
+      .accent { color: #2ecc71; }
+      .sub { font-size: 36px; color: #b4c0d6; margin-top: 22px; line-height: 1.3; }
+      .pill {
+        align-self: flex-start;
+        margin-top: 32px;
+        padding: 12px 28px;
+        border-radius: 999px;
+        background: rgba(46, 204, 113, 0.14);
+        border: 2px solid rgba(46, 204, 113, 0.55);
+        color: #7ee2a6;
+        font-size: 28px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="chip"></div>
+    <div class="text">
+      <div class="kicker">Poker Night Ledger</div>
+      <h1>Poker Night<br /><span class="accent">Settle up</span></h1>
+      <div class="sub">Tap your payment to mark it paid</div>
+      <div class="pill">Updates live for the whole group</div>
+    </div>
+  </body>
+</html>
