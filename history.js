@@ -1,4 +1,10 @@
-import { formatCents, formatDate, standingPokerPnlCents, txnKey } from './src/engine.js';
+import {
+  formatCents,
+  formatDate,
+  formatReminderWhatsApp,
+  standingPokerPnlCents,
+  txnKey,
+} from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
 
 const $ = (id) => document.getElementById(id);
@@ -69,21 +75,8 @@ function computeOutstanding(games, payments) {
   return rows.sort((a, b) => b.totalCents - a.totalCents || a.name.localeCompare(b.name));
 }
 
-function reminderText(rows) {
-  if (!rows.length) return null;
-  const lines = ['*Outstanding Payments*', ''];
-  for (const r of rows) {
-    const breakdown = r.items.map((i) => `${i.to} ${formatCents(i.amountCents)}`).join(', ');
-    lines.push(`${r.name} owes ${formatCents(r.totalCents)} (${breakdown})`);
-  }
-  const totalCents = rows.reduce((a, r) => a + r.totalCents, 0);
-  lines.push('');
-  lines.push(`${formatCents(totalCents)} total across ${rows.length} player${rows.length === 1 ? '' : 's'}.`);
-  return lines.join('\n');
-}
-
 async function copyReminder() {
-  const text = reminderText(currentOutstandingRows);
+  const text = formatReminderWhatsApp(currentOutstandingRows);
   if (!text) return showToast('Nobody owes anything right now.');
   try {
     await navigator.clipboard.writeText(text);

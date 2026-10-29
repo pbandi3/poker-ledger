@@ -8,6 +8,7 @@ import {
   largestRemainderSplit,
   parseBulk,
   formatCents,
+  formatReminderWhatsApp,
   formatWhatsApp,
   standingPokerPnlCents,
   toCents,
@@ -302,9 +303,16 @@ test('formatWhatsApp includes date, host fee and food lines', () => {
 });
 
 test('formatWhatsApp appends the pay link when provided', () => {
-  const l = computeLedger({ players: EVEN_FOUR });
+  const l = computeLedger({
+    defaultBuyIn: 100,
+    players: [
+      { name: 'A', chips: 120 },
+      { name: 'B', chips: 80 },
+    ],
+  });
   const text = formatWhatsApp(l, { payLink: 'https://example.com/pay.html?g=abc123' });
-  assert.match(text, /Mark yourself paid: https:\/\/example\.com\/pay\.html\?g=abc123/);
+  // Link sits on its own line so WhatsApp can unfurl it into a preview card.
+  assert.match(text, /Mark yourself paid\*? 👇\nhttps:\/\/example\.com\/pay\.html\?g=abc123$/);
 });
 
 test('parseBulk reads the messy photo text incl. header noise + artifacts', () => {
@@ -407,4 +415,84 @@ test('standingPokerPnlCents falls back to net minus fee/food when pokerPnlCents 
   // Nothing but a net (older saved games): the net is all there is to go on.
   assert.equal(standingPokerPnlCents({ netCents: 1200 }), 1200);
   assert.equal(standingPokerPnlCents({ netCents: 1200, pokerPnlCents: 900 }), 900);
+});
+
+const WA_LEDGER = {
+  date: '2026-10-23',
+  host: 'Balaji',
+  feeTotalCents: 1000,
+  hasFood: false,
+  balanced: true,
+  standings: [
+    { rank: 1, name: 'Siva', netCents: 11400, isHost: false },
+    { rank: 2, name: 'Balaji', netCents: 3200, isHost: true },
+    { rank: 3, name: 'Rajesh', netCents: -14600, isHost: false },
+  ],
+  transactions: [
+    { from: 'Rajesh', to: 'Siva', amountCents: 10800 },
+    { from: 'Rajesh', to: 'Balaji', amountCents: 3800 },
+  ],
+};
+
+test('formatWhatsApp layout: bold headings, dividers, no medals or colour dots', () => {
+  const text = formatWhatsApp(WA_LEDGER, { payLink: 'https://x.test/pay.html?g=1' });
+  assert.equal(
+    text,
+    [
+      '🃏 *POKER NIGHT*',
+      '📅 Fri, Oct 23, 2026',
+      '━━━━━━━━━━━━━━',
+      '',
+      '🏆 *Final Standings*',
+      '',
+      '1. Siva  *+$114.00*',
+      '2. Balaji (host)  *+$32.00*',
+      '3. Rajesh  *-$146.00*',
+      '',
+      '🏠 Host fee: $10.00 → Balaji',
+      '',
+      '━━━━━━━━━━━━━━',
+      '',
+      '💸 *Settle Up* · 2 payments',
+      '',
+      '• Rajesh → Siva  *$108.00*',
+      '• Rajesh → Balaji  *$38.00*',
+      '',
+      '✅ *Mark yourself paid* 👇',
+      'https://x.test/pay.html?g=1',
+    ].join('\n')
+  );
+  for (const banned of ['🥇', '🥈', '🥉', '🟢', '🔴']) assert.ok(!text.includes(banned));
+});
+
+test('formatWhatsApp handles an even night and an unbalanced ledger', () => {
+  const even = formatWhatsApp({ ...WA_LEDGER, transactions: [] }, { payLink: 'https://x.test/p?g=1' });
+  assert.doesNotMatch(even, /https:/); // nothing to pay, so no pay link
+  assert.match(even, /🤝 Everyone is even — no payments needed\./);
+  assert.doesNotMatch(even, /Settle Up/);
+  const single = formatWhatsApp({ ...WA_LEDGER, transactions: [WA_LEDGER.transactions[0]] });
+  assert.match(single, /\*Settle Up\* · 1 payment\n/); // singular
+  const off = formatWhatsApp({ ...WA_LEDGER, balanced: false });
+  assert.match(off, /⚠️ Ledger not balanced/);
+  assert.doesNotMatch(off, /Settle Up/);
+});
+
+test('formatReminderWhatsApp lists each debtor and the total', () => {
+  assert.equal(formatReminderWhatsApp([]), null);
+  const text = formatReminderWhatsApp([
+    { name: 'Siva', totalCents: 14500, items: [{ to: 'Kiran', amountCents: 1000 }, { to: 'Pradeep', amountCents: 4000 }] },
+    { name: 'Ravi', totalCents: 500, items: [{ to: 'Venkat', amountCents: 500 }] },
+  ]);
+  assert.equal(
+    text,
+    [
+      '🔔 *OUTSTANDING PAYMENTS*',
+      '━━━━━━━━━━━━━━',
+      '',
+      '• Siva owes *$145.00* (Kiran $10.00, Pradeep $40.00)',
+      '• Ravi owes *$5.00* (Venkat $5.00)',
+      '',
+      '💰 *$150.00* still outstanding across 2 players',
+    ].join('\n')
+  );
 });

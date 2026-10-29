@@ -443,41 +443,65 @@ export function parseBulk(text) {
   return out;
 }
 
+const WA_DIVIDER = '━━━━━━━━━━━━━━';
+
 /**
- * Build a plain-text WhatsApp-friendly blast from a computed ledger.
+ * Build the WhatsApp message for a computed ledger. WhatsApp only renders
+ * *bold*, _italic_, ~strike~, monospace and emoji, so the structure comes from
+ * bold headings, dividers and a few icons rather than tables or colour.
  */
 export function formatWhatsApp(ledger, { title = 'Poker Night', payLink = null } = {}) {
   const lines = [];
-  const heading = ledger.date ? `${title} — ${formatDate(ledger.date)}` : title;
-  lines.push(`*${heading} — Final Standings*`);
-  lines.push('');
+  lines.push(`🃏 *${title.toUpperCase()}*`);
+  if (ledger.date) lines.push(`📅 ${formatDate(ledger.date)}`);
+  lines.push(WA_DIVIDER, '');
+
+  lines.push('🏆 *Final Standings*', '');
   for (const r of ledger.standings) {
     const tags = [];
     if (r.isHost) tags.push('host');
     if (r.isFoodRecipient) tags.push('food');
     const tag = tags.length ? ` (${tags.join(', ')})` : '';
-    lines.push(`${r.rank}. ${r.name}${tag}: ${formatCents(r.netCents, { sign: true })}`);
+    lines.push(`${r.rank}. ${r.name}${tag}  *${formatCents(r.netCents, { sign: true })}*`);
   }
   lines.push('');
+
   if (ledger.feeTotalCents) {
-    lines.push(`Host fee: ${formatCents(ledger.feeTotalCents)} → ${ledger.host}`);
+    lines.push(`🏠 Host fee: ${formatCents(ledger.feeTotalCents)} → ${ledger.host}`);
   }
   if (ledger.hasFood) {
-    lines.push(`Food: ${formatCents(ledger.foodTotalCents)} → ${ledger.foodRecipient}`);
+    lines.push(`🍕 Food: ${formatCents(ledger.foodTotalCents)} → ${ledger.foodRecipient}`);
   }
   if (ledger.feeTotalCents || ledger.hasFood) lines.push('');
-  if (ledger.balanced) {
-    lines.push('*Settle Up* ' + `(${ledger.transactions.length} payments)`);
-    lines.push('');
-    for (const t of ledger.transactions) {
-      lines.push(`${t.from} → ${t.to}: ${formatCents(t.amountCents)}`);
-    }
-    if (payLink) {
-      lines.push('');
-      lines.push(`Mark yourself paid: ${payLink}`);
-    }
-  } else {
+  lines.push(WA_DIVIDER, '');
+
+  if (!ledger.balanced) {
     lines.push('⚠️ Ledger not balanced — fix chip counts before settling.');
+  } else if (ledger.transactions.length === 0) {
+    lines.push('🤝 Everyone is even — no payments needed.');
+  } else {
+    const n = ledger.transactions.length;
+    lines.push(`💸 *Settle Up* · ${n} payment${n === 1 ? '' : 's'}`, '');
+    for (const t of ledger.transactions) {
+      lines.push(`• ${t.from} → ${t.to}  *${formatCents(t.amountCents)}*`);
+    }
+    if (payLink) lines.push('', '✅ *Mark yourself paid* 👇', payLink);
   }
+  return lines.join('\n');
+}
+
+/**
+ * "Who still owes" nudge for WhatsApp. `rows` is one entry per debtor:
+ * { name, totalCents, items: [{ to, amountCents }] }.
+ */
+export function formatReminderWhatsApp(rows) {
+  if (!rows.length) return null;
+  const lines = ['🔔 *OUTSTANDING PAYMENTS*', WA_DIVIDER, ''];
+  for (const r of rows) {
+    const breakdown = r.items.map((i) => `${i.to} ${formatCents(i.amountCents)}`).join(', ');
+    lines.push(`• ${r.name} owes *${formatCents(r.totalCents)}* (${breakdown})`);
+  }
+  const totalCents = rows.reduce((a, r) => a + r.totalCents, 0);
+  lines.push('', `💰 *${formatCents(totalCents)}* still outstanding across ${rows.length} player${rows.length === 1 ? '' : 's'}`);
   return lines.join('\n');
 }
