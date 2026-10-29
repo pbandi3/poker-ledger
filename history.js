@@ -189,24 +189,47 @@ function computePlayerStats(games) {
   return { players: [...byName.values()], biggestWin, biggestLoss };
 }
 
-function renderLeaderboard(players, gameCount) {
-  const rows = [...players].sort((a, b) => b.pnlCents - a.pnlCents || a.name.localeCompare(b.name));
+// Sortable columns. Text sorts A-Z first; numbers sort biggest-first first.
+// The # column is always the lifetime-P&L rank, whatever the sort order.
+const LEADERBOARD_COLUMNS = [
+  { key: 'name', label: 'Player', cls: '', firstDir: 'asc' },
+  { key: 'games', label: 'Games', cls: 'num col-detail', firstDir: 'desc' },
+  { key: 'pnlCents', label: 'Lifetime P&amp;L', cls: 'num', firstDir: 'desc' },
+  { key: 'best', label: 'Best night', cls: 'num', firstDir: 'desc' },
+  { key: 'worst', label: 'Worst night', cls: 'num', firstDir: 'desc' },
+];
+let leaderboard = { players: [], gameCount: 0 };
+let leaderboardSort = { key: 'pnlCents', dir: 'desc' };
 
-  els.leaderboardNote.textContent = rows.length
-    ? `${rows.length} players across ${gameCount} games · poker winnings only (host fee & food excluded)`
-    : '';
+function sortedLeaderboardPlayers() {
+  const { key, dir } = leaderboardSort;
+  const sign = dir === 'asc' ? 1 : -1;
+  return [...leaderboard.players].sort((a, b) => {
+    const diff = key === 'name' ? a.name.localeCompare(b.name) : a[key] - b[key];
+    return diff * sign || a.name.localeCompare(b.name);
+  });
+}
 
-  if (!rows.length) {
-    els.leaderboardTable.innerHTML =
-      '<tbody><tr><td class="muted">No shared games yet — use "Copy text" or "Share to WhatsApp" after a calculation to start tracking history.</td></tr></tbody>';
-    return;
-  }
+function sortHeader({ key, label, cls }) {
+  const active = leaderboardSort.key === key;
+  const ariaSort = active ? (leaderboardSort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+  const arrow = active ? (leaderboardSort.dir === 'asc' ? '▲' : '▼') : '↕';
+  return `<th class="${cls}" aria-sort="${ariaSort}"><button type="button" class="sort-btn" data-key="${key}">${label}<span class="sort-arrow" aria-hidden="true">${arrow}</span></button></th>`;
+}
+
+function drawLeaderboard() {
+  const rows = sortedLeaderboardPlayers();
+  const rankByName = new Map(
+    [...leaderboard.players]
+      .sort((a, b) => b.pnlCents - a.pnlCents || a.name.localeCompare(b.name))
+      .map((p, i) => [p.name, i + 1])
+  );
 
   const body = rows
     .map(
-      (r, i) => `
+      (r) => `
       <tr>
-        <td class="num">${i + 1}</td>
+        <td class="num">${rankByName.get(r.name)}</td>
         <td>${escapeHtml(r.name)}</td>
         <td class="num col-detail">${r.games}</td>
         ${pnlCell(r.pnlCents)}
@@ -219,13 +242,41 @@ function renderLeaderboard(players, gameCount) {
   els.leaderboardTable.innerHTML = `
     <thead>
       <tr>
-        <th class="num">#</th><th>Player</th>
-        <th class="num col-detail">Games</th>
-        <th class="num">Lifetime P&amp;L</th><th class="num">Best night</th><th class="num">Worst night</th>
+        <th class="num">#</th>
+        ${LEADERBOARD_COLUMNS.map(sortHeader).join('')}
       </tr>
     </thead>
     <tbody>${body}</tbody>`;
 }
+
+function renderLeaderboard(players, gameCount) {
+  leaderboard = { players, gameCount };
+
+  els.leaderboardNote.textContent = players.length
+    ? `${players.length} players across ${gameCount} games · poker winnings only (host fee & food excluded)`
+    : '';
+
+  if (!players.length) {
+    els.leaderboardTable.innerHTML =
+      '<tbody><tr><td class="muted">No shared games yet — use "Copy text" or "Share to WhatsApp" after a calculation to start tracking history.</td></tr></tbody>';
+    return;
+  }
+  drawLeaderboard();
+}
+
+els.leaderboardTable.addEventListener('click', (e) => {
+  const btn = e.target.closest('.sort-btn');
+  if (!btn) return;
+  const col = LEADERBOARD_COLUMNS.find((c) => c.key === btn.dataset.key);
+  if (!col) return;
+  leaderboardSort =
+    leaderboardSort.key === col.key
+      ? { key: col.key, dir: leaderboardSort.dir === 'asc' ? 'desc' : 'asc' }
+      : { key: col.key, dir: col.firstDir };
+  drawLeaderboard();
+  // The redraw replaced the button; hand keyboard focus to its successor.
+  els.leaderboardTable.querySelector(`.sort-btn[data-key="${col.key}"]`)?.focus();
+});
 
 function renderFunFacts({ players, biggestWin, biggestLoss }) {
   if (!players.length) {
