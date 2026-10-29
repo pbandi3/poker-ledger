@@ -543,3 +543,87 @@ code {
   box-shadow: var(--shadow);
   z-index: 50;
 }
+
+/* Sortable table headers (History > Lifetime standings) */
+table.report th .sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+table.report th .sort-btn:hover {
+  color: var(--text);
+}
+table.report th .sort-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+table.report th .sort-arrow {
+  font-size: 10px;
+  opacity: 0.4;
+}
+table.report th[aria-sort='ascending'],
+table.report th[aria-sort='descending'] {
+  color: var(--text);
+}
+table.report th[aria-sort='ascending'] .sort-arrow,
+table.report th[aria-sort='descending'] .sort-arrow {
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* Lifetime standings: short headers are phone-only. */
+table.report.leaderboard .lbl-short {
+  display: none;
+}
+
+/* On phones the generic rule above hides .col-detail columns, but Games is
+   real information here - keep every column and shrink the table to fit. */
+@media (max-width: 520px) {
+  .leaderboard-scroll {
+    margin-left: -8px;
+    margin-right: -8px;
+  }
+  table.report.leaderboard .col-detail {
+    display: table-cell;
+  }
+  table.report.leaderboard th,
+  table.report.leaderboard td {
+    padding: 10px 3px;
+    font-size: 13px;
+  }
+  table.report.leaderboard td.num {
+    font-size: 12px;
+  }
+  table.report.leaderboard th {
+    font-size: 11px;
+    letter-spacing: 0.2px;
+  }
+  table.report.leaderboard td:nth-child(2) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  /* Keep the full header name for screen readers; show the short one. */
+  table.report.leaderboard .lbl-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  table.report.leaderboard .lbl-short {
+    display: inline;
+  }
+  table.report.leaderboard th .sort-btn {
+    gap: 2px;
+  }
+}
