@@ -15,7 +15,7 @@ const SETTLED_KEY = 'poker-ledger-settled-v1';
 const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
 const DRAFT_KEY = 'poker-ledger-draft-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v25';
+const APP_VERSION = 'v26';
 
 const els = {
   date: $('date'),
