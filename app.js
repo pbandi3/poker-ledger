@@ -1038,7 +1038,11 @@ async function startLiveGame() {
     const state = buildDraftState();
     draft = null; // not shared until the server has it
     for (let attempt = 0; ; attempt += 1) {
-      const { error } = await supabase.from('drafts').insert({ id: candidate.id, state, version: 1 });
+      // If this game already has a pay link, carry it over so the other phone
+      // updates that same game instead of creating a second one.
+      const { error } = await supabase
+        .from('drafts')
+        .insert({ id: candidate.id, state, version: 1, game_id: currentGameId });
       if (!error) break;
       if (error.code !== '23505' || attempt >= 2) throw error;
       candidate.id = genGameId();
