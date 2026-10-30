@@ -483,7 +483,8 @@ export function formatWhatsApp(ledger, { title = 'Poker Night', payLink = null }
     const n = ledger.transactions.length;
     lines.push(`💸 *Settle Up* · ${n} payment${n === 1 ? '' : 's'}`, '');
     for (const t of ledger.transactions) {
-      lines.push(`• ${t.from} → ${t.to}  *${formatCents(t.amountCents)}*`);
+      // "> " makes WhatsApp draw a quote bar beside the payments.
+      lines.push(`> *${t.from}* → *${t.to}*  *${formatCents(t.amountCents)}*`);
     }
     if (payLink) lines.push('', '✅ *Mark yourself paid* 👇', payLink);
   }
