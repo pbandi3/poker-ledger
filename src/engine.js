@@ -42,6 +42,20 @@ export function standingPokerPnlCents(s) {
 }
 
 /** Format integer cents as a signed currency string, e.g. -$70.00. */
+const GUEST_RE = /\s*\(guest\)\s*$/i;
+
+/** Guests are marked by a "(guest)" suffix on the name, e.g. "Lok (guest)". */
+export function isGuestName(name) {
+  return GUEST_RE.test(String(name ?? ''));
+}
+
+/** Add or remove the "(guest)" suffix, leaving the rest of the name as typed. */
+export function toggleGuestName(name) {
+  const base = String(name ?? '').replace(GUEST_RE, '').trim();
+  if (isGuestName(name)) return base;
+  return base ? `${base} (guest)` : '';
+}
+
 export function formatCents(cents, { sign = false } = {}) {
   const neg = cents < 0;
   const abs = Math.abs(cents);

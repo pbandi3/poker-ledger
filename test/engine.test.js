@@ -10,6 +10,8 @@ import {
   formatCents,
   formatReminderWhatsApp,
   formatWhatsApp,
+  isGuestName,
+  toggleGuestName,
   standingPokerPnlCents,
   toCents,
   FeeType,
@@ -495,4 +497,15 @@ test('formatReminderWhatsApp lists each debtor and the total', () => {
       '💰 *$150.00* still outstanding across 2 players',
     ].join('\n')
   );
+});
+
+test('guest names: detect and toggle the "(guest)" suffix', () => {
+  assert.equal(isGuestName('Lok (guest)'), true);
+  assert.equal(isGuestName('lok (Guest)'), true);
+  assert.equal(isGuestName('Lok'), false);
+  assert.equal(isGuestName('Guestlin'), false);
+  assert.equal(toggleGuestName('Lok'), 'Lok (guest)');
+  assert.equal(toggleGuestName('  Lok  '), 'Lok (guest)');
+  assert.equal(toggleGuestName('Lok (guest)'), 'Lok');
+  assert.equal(toggleGuestName(''), '');
 });

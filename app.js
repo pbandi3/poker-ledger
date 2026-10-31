@@ -3,7 +3,9 @@ import {
   formatWhatsApp,
   formatCents,
   formatDate,
+  isGuestName,
   toDollars,
+  toggleGuestName,
   txnKey,
 } from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
@@ -15,7 +17,7 @@ const SETTLED_KEY = 'poker-ledger-settled-v1';
 const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
 const DRAFT_KEY = 'poker-ledger-draft-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v26';
+const APP_VERSION = 'v27';
 
 const els = {
   date: $('date'),
@@ -159,7 +161,12 @@ function updateLiveSummary() {
 function makeRow(data = { name: '', buyIn: '', chips: '' }) {
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td class="col-name"><input class="j-name" type="text" placeholder="Name" autocomplete="off" list="playerNamesList" /></td>
+    <td class="col-name">
+      <div class="name-field">
+        <input class="j-name" type="text" placeholder="Name" autocomplete="off" list="playerNamesList" />
+        <button type="button" class="guest-toggle" title="Mark as guest" aria-label="Toggle guest">G</button>
+      </div>
+    </td>
     <td class="col-num"><input class="j-buyin" type="text" inputmode="decimal" placeholder="def" /></td>
     <td class="col-num">
       <div class="chips-field">
@@ -194,6 +201,21 @@ function makeRow(data = { name: '', buyIn: '', chips: '' }) {
   });
   updateNegativeState();
   tr._refreshNegative = updateNegativeState;
+  const nameInput = tr.querySelector('.j-name');
+  const guestBtn = tr.querySelector('.guest-toggle');
+  const updateGuestState = () => {
+    const guest = isGuestName(nameInput.value);
+    guestBtn.classList.toggle('active', guest);
+    guestBtn.setAttribute('aria-pressed', String(guest));
+  };
+  guestBtn.addEventListener('click', () => {
+    nameInput.value = toggleGuestName(nameInput.value);
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    nameInput.focus();
+  });
+  nameInput.addEventListener('input', updateGuestState);
+  updateGuestState();
+  tr._refreshGuest = updateGuestState;
   tr.querySelectorAll('input').forEach((inp) => {
     inp.addEventListener('input', () => {
       if (inp.classList.contains('j-name')) refreshHostOptions();
@@ -809,6 +831,7 @@ function applyDraftState(state) {
       if (input.value !== value) input.value = value;
     }
     tr._refreshNegative?.();
+    tr._refreshGuest?.();
     tr.dataset.t = String(r.t ?? 0);
     tr.dataset.sig = rowSig(tr);
   }
