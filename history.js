@@ -2,6 +2,7 @@ import {
   formatCents,
   formatDate,
   formatReminderWhatsApp,
+  isGuestName,
   standingPokerPnlCents,
   txnKey,
 } from './src/engine.js';
@@ -14,6 +15,9 @@ const els = {
   copyReminderBtn: $('copyReminderBtn'),
   leaderboardTable: $('leaderboardTable'),
   leaderboardNote: $('leaderboardNote'),
+  guestSwitch: $('guestSwitch'),
+  guestSwitchLabel: $('guestSwitchLabel'),
+  showGuests: $('showGuests'),
   gamesTable: $('gamesTable'),
   funFactsTable: $('funFactsTable'),
   toast: $('toast'),
@@ -211,10 +215,18 @@ function sortHeader({ key, label, short, cls }) {
   return `<th class="${cls}" aria-sort="${ariaSort}"><button type="button" class="sort-btn" data-key="${key}">${short ? `<span class="lbl-full">${label}</span><span class="lbl-short" aria-hidden="true">${short}</span>` : label}<span class="sort-arrow" aria-hidden="true">${arrow}</span></button></th>`;
 }
 
+function visibleLeaderboardPlayers() {
+  return els.showGuests.checked
+    ? leaderboard.players
+    : leaderboard.players.filter((p) => !isGuestName(p.name));
+}
+
 function drawLeaderboard() {
-  const rows = sortedLeaderboardPlayers();
+  const visible = new Set(visibleLeaderboardPlayers().map((p) => p.name));
+  const rows = sortedLeaderboardPlayers().filter((p) => visible.has(p.name));
   const rankByName = new Map(
     [...leaderboard.players]
+      .filter((p) => visible.has(p.name))
       .sort((a, b) => b.pnlCents - a.pnlCents || a.name.localeCompare(b.name))
       .map((p, i) => [p.name, i + 1])
   );
@@ -243,12 +255,20 @@ function drawLeaderboard() {
     <tbody>${body}</tbody>`;
 }
 
+function updateLeaderboardNote() {
+  const { players, gameCount } = leaderboard;
+  els.leaderboardNote.textContent = players.length
+    ? `${visibleLeaderboardPlayers().length} players across ${gameCount} games · poker winnings only (host fee & food excluded)`
+    : '';
+}
+
 function renderLeaderboard(players, gameCount) {
   leaderboard = { players, gameCount };
 
-  els.leaderboardNote.textContent = players.length
-    ? `${players.length} players across ${gameCount} games · poker winnings only (host fee & food excluded)`
-    : '';
+  const guestCount = players.filter((p) => isGuestName(p.name)).length;
+  els.guestSwitch.hidden = guestCount === 0;
+  els.guestSwitchLabel.textContent = `Show guests (${guestCount})`;
+  updateLeaderboardNote();
 
   if (!players.length) {
     els.leaderboardTable.innerHTML =
@@ -257,6 +277,11 @@ function renderLeaderboard(players, gameCount) {
   }
   drawLeaderboard();
 }
+
+els.showGuests.addEventListener('change', () => {
+  updateLeaderboardNote();
+  drawLeaderboard();
+});
 
 els.leaderboardTable.addEventListener('click', (e) => {
   const btn = e.target.closest('.sort-btn');

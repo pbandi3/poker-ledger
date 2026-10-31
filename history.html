@@ -28,8 +28,12 @@
       <section class="card">
         <div class="card-head">
           <h2>Lifetime standings</h2>
-          <span class="muted small" id="leaderboardNote"></span>
+          <label class="guest-switch muted small" id="guestSwitch" hidden>
+            <input type="checkbox" id="showGuests" />
+            <span id="guestSwitchLabel">Show guests</span>
+          </label>
         </div>
+        <p class="muted small" id="leaderboardNote"></p>
         <div class="table-scroll leaderboard-scroll">
           <table class="report leaderboard" id="leaderboardTable"></table>
         </div>
