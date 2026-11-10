@@ -7,6 +7,17 @@ import {
   txnKey,
 } from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
+import {
+  gameYear,
+  gamesToCsv,
+  headToHead,
+  playerNames,
+  playerTimeline,
+  renameImpact,
+  renameInLedger,
+  renamePaymentKey,
+  settledCount,
+} from './src/gameTools.js';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -18,10 +29,24 @@ const els = {
   guestSwitch: $('guestSwitch'),
   guestSwitchLabel: $('guestSwitchLabel'),
   showGuests: $('showGuests'),
+  yearFilter: $('yearFilter'),
+  playerDialog: $('playerDialog'),
+  playerTitle: $('playerTitle'),
+  playerBody: $('playerBody'),
+  playerClose: $('playerClose'),
+  exportJsonBtn: $('exportJsonBtn'),
+  exportCsvBtn: $('exportCsvBtn'),
+  renameFrom: $('renameFrom'),
+  renameTo: $('renameTo'),
+  renameBtn: $('renameBtn'),
+  renameNames: $('renameNames'),
   gamesTable: $('gamesTable'),
   funFactsTable: $('funFactsTable'),
   toast: $('toast'),
 };
+
+let allGames = [];
+let allPayments = [];
 
 // Set by renderOutstanding, read by copyReminder — avoids recomputing on click.
 let currentOutstandingRows = [];
@@ -236,7 +261,7 @@ function drawLeaderboard() {
       (r) => `
       <tr>
         <td class="num">${rankByName.get(r.name)}</td>
-        <td>${escapeHtml(r.name)}</td>
+        <td><button type="button" class="player-link" data-name="${escapeHtml(r.name)}">${escapeHtml(r.name)}</button></td>
         <td class="num col-detail">${r.games}</td>
         ${pnlCell(r.pnlCents)}
         ${pnlCell(r.best)}
@@ -258,7 +283,7 @@ function drawLeaderboard() {
 function updateLeaderboardNote() {
   const { players, gameCount } = leaderboard;
   els.leaderboardNote.textContent = players.length
-    ? `${visibleLeaderboardPlayers().length} players across ${gameCount} games · poker winnings only (host fee & food excluded)`
+    ? `${visibleLeaderboardPlayers().length} players across ${gameCount} games${els.yearFilter.value === 'all' ? '' : ` in ${els.yearFilter.value}`} · poker winnings only (host fee & food excluded)`
     : '';
 }
 
@@ -284,6 +309,8 @@ els.showGuests.addEventListener('change', () => {
 });
 
 els.leaderboardTable.addEventListener('click', (e) => {
+  const link = e.target.closest('.player-link');
+  if (link) return openPlayer(link.dataset.name);
   const btn = e.target.closest('.sort-btn');
   if (!btn) return;
   const col = LEADERBOARD_COLUMNS.find((c) => c.key === btn.dataset.key);
@@ -351,7 +378,13 @@ function renderFunFacts({ players, biggestWin, biggestLoss }) {
   els.funFactsTable.innerHTML = `<tbody>${body}</tbody>`;
 }
 
-function renderGames(games, settledByGame) {
+function editUrl(id) {
+  const u = new URL('./index.html', location.href);
+  u.searchParams.set('edit', id);
+  return u.toString();
+}
+
+function renderGames(games) {
   if (!games.length) {
     els.gamesTable.innerHTML =
       '<tbody><tr><td class="muted">No shared games yet.</td></tr></tbody>';
@@ -361,16 +394,16 @@ function renderGames(games, settledByGame) {
   const rows = games
     .map((game) => {
       const total = game.ledger?.transactions?.length ?? 0;
-      const done = settledByGame.get(game.id) ?? 0;
+      const done = settledCount(game, allPayments);
       const players = game.ledger?.standings?.length ?? 0;
-      const status = total ? `${done} of ${total} settled` : 'no payments due';
+      const status = !total ? 'no payments due' : done >= total ? '✓ All settled' : `${done} of ${total} settled`;
       return `
         <tr>
           <td>${game.date ? escapeHtml(formatDate(game.date)) : '—'}</td>
           <td>${escapeHtml(game.host ?? '—')}</td>
           <td class="num col-detail">${players}</td>
-          <td>${escapeHtml(status)}</td>
-          <td><a href="${escapeHtml(paymentsUrl(game.id))}">Open</a></td>
+          <td class="${total && done >= total ? 'pos' : ''}">${escapeHtml(status)}</td>
+          <td class="nowrap"><a href="${escapeHtml(paymentsUrl(game.id))}">Open</a> · <a href="${escapeHtml(editUrl(game.id))}">Edit</a></td>
         </tr>`;
     })
     .join('');
@@ -396,19 +429,186 @@ async function load() {
   }
 
   const { data: payments } = await supabase.from('payments').select('game_id, txn_key, paid');
-  const settledByGame = new Map();
-  for (const p of payments ?? []) {
-    if (!p.paid) continue;
-    settledByGame.set(p.game_id, (settledByGame.get(p.game_id) ?? 0) + 1);
-  }
+  allGames = games ?? [];
+  allPayments = payments ?? [];
+  renderYearOptions();
+  renderPlayerPickers();
+  renderAll();
+}
 
-  const stats = computePlayerStats(games ?? []);
+// Lifetime standings and fun facts follow the year filter; everything else is all-time.
+function gamesInYear() {
+  const y = els.yearFilter.value;
+  return y === 'all' ? allGames : allGames.filter((g) => gameYear(g.date) === y);
+}
 
-  renderLeaderboard(stats.players, (games ?? []).length);
-  renderOutstanding(computeOutstanding(games ?? [], payments ?? []));
-  renderGames(games ?? [], settledByGame);
+function renderAll() {
+  const inYear = gamesInYear();
+  const stats = computePlayerStats(inYear);
+  renderLeaderboard(stats.players, inYear.length);
+  renderOutstanding(computeOutstanding(allGames, allPayments));
+  renderGames(allGames);
   renderFunFacts(stats);
 }
 
+function renderYearOptions() {
+  const years = [...new Set(allGames.map((g) => gameYear(g.date)).filter(Boolean))].sort().reverse();
+  const keep = els.yearFilter.value;
+  els.yearFilter.innerHTML =
+    '<option value="all">All time</option>' + years.map((y) => `<option value="${y}">${y}</option>`).join('');
+  els.yearFilter.value = years.includes(keep) ? keep : 'all';
+}
+
+els.yearFilter.addEventListener('change', renderAll);
+
+// ---- Player page --------------------------------------------------------------
+function sparkline(nights) {
+  if (nights.length < 2) return '';
+  const W = 300;
+  const H = 80;
+  const pad = 6;
+  const vals = nights.map((n) => n.totalCents);
+  const lo = Math.min(0, ...vals);
+  const hi = Math.max(0, ...vals);
+  const span = hi - lo || 1;
+  const x = (i) => pad + (i * (W - 2 * pad)) / (nights.length - 1);
+  const y = (v) => H - pad - ((v - lo) * (H - 2 * pad)) / span;
+  const pts = nights.map((n, i) => `${x(i).toFixed(1)},${y(n.totalCents).toFixed(1)}`).join(' ');
+  const last = vals[vals.length - 1];
+  return `<svg class="spark ${last >= 0 ? 'up' : 'down'}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Running poker total by night">
+    <line class="zero" x1="${pad}" x2="${W - pad}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"></line>
+    <polyline points="${pts}"></polyline>
+    <circle cx="${x(nights.length - 1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="3.5"></circle>
+  </svg>`;
+}
+
+function openPlayer(name) {
+  const nights = playerTimeline(allGames, name);
+  if (!nights.length) return;
+  const total = nights.reduce((a, n) => a + n.pnlCents, 0);
+  const wins = nights.filter((n) => n.pnlCents > 0).length;
+  const flow = headToHead(allGames, name);
+  const collects = flow.filter((f) => f.cents > 0).slice(0, 3);
+  const pays = flow.filter((f) => f.cents < 0).slice(-3).reverse();
+  const flowRows = (list) =>
+    list.length
+      ? list.map((f) => `<tr><td>${escapeHtml(f.opponent)}</td>${pnlCell(f.cents)}</tr>`).join('')
+      : '<tr><td class="muted">Nobody yet</td><td></td></tr>';
+
+  els.playerTitle.textContent = name;
+  els.playerBody.innerHTML = `
+    <p class="muted small">${nights.length} night${nights.length === 1 ? '' : 's'} · won ${wins} · lifetime poker P&amp;L
+      <b class="${total >= 0 ? 'pos' : 'neg'}">${formatCents(total, { sign: true })}</b> (all time, host fee &amp; food excluded)</p>
+    ${sparkline(nights)}
+    <h3 class="sub-head">Money moved with</h3>
+    <div class="h2h">
+      <table class="report"><thead><tr><th>Collects from</th><th class="num">Total</th></tr></thead><tbody>${flowRows(collects)}</tbody></table>
+      <table class="report"><thead><tr><th>Pays to</th><th class="num">Total</th></tr></thead><tbody>${flowRows(pays)}</tbody></table>
+    </div>
+    <p class="muted small">From settlement payments, which are minimised, so this shows where the money actually went.</p>
+    <h3 class="sub-head">Night by night</h3>
+    <table class="report"><thead><tr><th>Date</th><th class="num">Poker P&amp;L</th><th class="num">Running</th></tr></thead><tbody>
+      ${[...nights]
+        .reverse()
+        .map(
+          (n) => `<tr><td>${n.date ? escapeHtml(formatDate(n.date)) : '—'}${n.isHost ? ' <span class="muted small">(host)</span>' : ''}</td>${pnlCell(n.pnlCents)}${pnlCell(n.totalCents)}</tr>`
+        )
+        .join('')}
+    </tbody></table>`;
+  els.playerDialog.showModal();
+  els.playerBody.scrollTop = 0;
+}
+
+els.playerClose.addEventListener('click', () => els.playerDialog.close());
+els.playerDialog.addEventListener('click', (e) => {
+  if (e.target === els.playerDialog) els.playerDialog.close(); // tap on the backdrop
+});
+
+// ---- Backup -------------------------------------------------------------------
+function download(filename, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const stamp = () => new Date().toISOString().slice(0, 10);
+
+els.exportJsonBtn.addEventListener('click', () => {
+  if (!allGames.length) return showToast('Nothing to back up yet.');
+  const backup = { exportedAt: new Date().toISOString(), games: allGames, payments: allPayments };
+  download(`poker-ledger-backup-${stamp()}.json`, JSON.stringify(backup, null, 2), 'application/json');
+  showToast(`Saved ${allGames.length} games`);
+});
+
+els.exportCsvBtn.addEventListener('click', () => {
+  if (!allGames.length) return showToast('Nothing to export yet.');
+  download(`poker-ledger-${stamp()}.csv`, gamesToCsv(allGames), 'text/csv');
+  showToast(`Saved ${allGames.length} games`);
+});
+
+// ---- Rename a player everywhere ------------------------------------------------
+function renderPlayerPickers() {
+  const names = playerNames(allGames);
+  els.renameFrom.innerHTML = names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+  els.renameNames.innerHTML = els.renameFrom.innerHTML;
+}
+
+async function renameEverywhere() {
+  const from = els.renameFrom.value;
+  const to = els.renameTo.value.trim().replace(/\s+/g, ' ');
+  if (!from) return;
+  if (!to) return showToast('Type the new name first.');
+  if (to === from) return showToast('That is already the name.');
+
+  const impact = renameImpact(allGames, allPayments, from, to);
+  if (impact.clash.length) {
+    const dates = impact.clash.map((g) => formatDate(g.date)).join(', ');
+    return showToast(`"${to}" already plays in the same game (${dates}). Rename or remove one first.`);
+  }
+  const merge = impact.existsElsewhere
+    ? `\n\n"${to}" already exists in other games, so those results will be combined under one name.`
+    : '';
+  const ok = confirm(
+    `Rename "${from}" to "${to}"?\n\n${impact.games.length} game${impact.games.length === 1 ? '' : 's'} and ` +
+      `${impact.paymentRows.length} payment record${impact.paymentRows.length === 1 ? '' : 's'} will change. ` +
+      `Anyone with an old pay link will see the new name.${merge}`
+  );
+  if (!ok) return;
+
+  els.renameBtn.disabled = true;
+  try {
+    for (const g of impact.games) {
+      const { error } = await supabase
+        .from('games')
+        .update({
+          ledger: renameInLedger(g.ledger, from, to),
+          host: g.host === from ? to : g.host,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', g.id);
+      if (error) throw error;
+    }
+    for (const p of impact.paymentRows) {
+      const { error } = await supabase
+        .from('payments')
+        .update({ txn_key: renamePaymentKey(p.txn_key, from, to) })
+        .eq('game_id', p.game_id)
+        .eq('txn_key', p.txn_key);
+      if (error) throw error;
+    }
+    showToast(`Renamed in ${impact.games.length} game${impact.games.length === 1 ? '' : 's'}`);
+    els.renameTo.value = '';
+    await load();
+  } catch (err) {
+    showToast(`Stopped part-way: ${err.message || 'network error'}. Reload and try again.`);
+  } finally {
+    els.renameBtn.disabled = false;
+  }
+}
+
+els.renameBtn.addEventListener('click', renameEverywhere);
 els.copyReminderBtn.addEventListener('click', copyReminder);
 load();

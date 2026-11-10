@@ -31,7 +31,12 @@ const paidByKey = new Map();
 
 function render() {
   const done = transactions.filter((t) => paidByKey.get(txnKey(t))).length;
-  els.progress.textContent = transactions.length ? `${done} of ${transactions.length} settled` : '';
+  els.progress.textContent = !transactions.length
+    ? ''
+    : done >= transactions.length
+      ? '✓ All settled'
+      : `${done} of ${transactions.length} settled`;
+  els.progress.classList.toggle('pos', transactions.length > 0 && done >= transactions.length);
 
   if (!transactions.length) {
     els.table.innerHTML =

@@ -23,7 +23,10 @@ The math runs **on-device**. A game only leaves the phone when you copy or share
 
 - **WhatsApp message**: bold standings and settle-up list plus a pay link (copy or native share).
 - **Pay page** (`pay.html`): the shared checklist where anyone can tick payments as paid.
-- **History** (`history.html`): lifetime standings (poker-only P&L, sortable, guests hidden by default), who still owes (with a copyable reminder), past games, and fun facts.
+- **History** (`history.html`): lifetime standings (poker-only P&L, sortable, year filter, guests hidden by default), who still owes (with a copyable reminder), past games with an "All settled" badge, and fun facts.
+- **Player page**: tap a name in the standings for their night-by-night results, a running-total chart, and who they collect from or pay to.
+- **Fix mistakes**: *Edit* on a past game reopens it in the calculator (same pay link, ticked payments kept); *Rename a player everywhere* fixes names and guest tags across all games.
+- **Backup**: download every game and payment as JSON, or a CSV for a spreadsheet.
 - **Live game**: start a game on one phone and finish it on another; edits sync in real time.
 - **Test game** switch: keeps a practice game entirely off the database.
 - Offline support and add-to-home-screen install.
@@ -34,6 +37,7 @@ The math runs **on-device**. A game only leaves the phone when you copy or share
 | --- | --- | --- |
 | Deterministic engine | `src/engine.js` | Pure, integer-cents, no DOM. Unit-tested. |
 | Live-game merge | `src/draft.js` | Pure merge of two phones' edits. Unit-tested. |
+| Saved-game tools | `src/gameTools.js` | Rename, edit-a-game, player history, CSV. Pure, unit-tested. |
 | UI / capture | `index.html`, `styles.css`, `app.js` | Entry form, results, live game. |
 | History and payments | `history.html/.js`, `pay.html/.js` | Read and update shared games. |
 | Backend | `src/supabaseClient.js`, `supabase/*.sql` | Supabase tables `games`, `payments`, `drafts`. |

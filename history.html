@@ -28,10 +28,13 @@
       <section class="card">
         <div class="card-head">
           <h2>Lifetime standings</h2>
-          <label class="guest-switch muted small" id="guestSwitch" hidden>
-            <input type="checkbox" id="showGuests" />
-            <span id="guestSwitchLabel">Show guests</span>
-          </label>
+          <div class="head-actions">
+            <select id="yearFilter" class="year-select" aria-label="Year"></select>
+            <label class="guest-switch muted small" id="guestSwitch" hidden>
+              <input type="checkbox" id="showGuests" />
+              <span id="guestSwitchLabel">Show guests</span>
+            </label>
+          </div>
         </div>
         <p class="muted small" id="leaderboardNote"></p>
         <div class="table-scroll leaderboard-scroll">
@@ -69,7 +72,39 @@
           <table class="report" id="funFactsTable"></table>
         </div>
       </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Backup &amp; fixes</h2></div>
+        <h3 class="sub-head">Backup</h3>
+        <p class="muted small">
+          Saves every game and payment on this phone. JSON is a full backup; CSV opens in a spreadsheet.
+        </p>
+        <div class="head-actions">
+          <button id="exportJsonBtn" class="ghost small">Download backup (JSON)</button>
+          <button id="exportCsvBtn" class="ghost small">Download CSV</button>
+        </div>
+
+        <h3 class="sub-head">Rename a player everywhere</h3>
+        <p class="muted small">
+          Fixes a typo or a guest tag across every game and payment. Use an existing name to combine two
+          entries. To fix a single game, tap Edit next to it in Past games.
+        </p>
+        <div class="rename-row">
+          <select id="renameFrom" aria-label="Player to rename"></select>
+          <input id="renameTo" type="text" placeholder="New name" autocomplete="off" list="renameNames" />
+          <button id="renameBtn" class="ghost small">Rename</button>
+        </div>
+        <datalist id="renameNames"></datalist>
+      </section>
     </main>
+
+    <dialog id="playerDialog" class="player-dialog">
+      <div class="card-head">
+        <h2 id="playerTitle"></h2>
+        <button id="playerClose" class="ghost small" type="button">Close</button>
+      </div>
+      <div id="playerBody"></div>
+    </dialog>
 
     <footer class="foot muted small">
       Only games shared with "Copy text" / "Share to WhatsApp" appear here.

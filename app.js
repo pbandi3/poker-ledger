@@ -10,6 +10,7 @@ import {
 } from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
 import { mergeDraftStates, stableStringify } from './src/draft.js';
+import { inferEditableGame, reuseSavedPayments } from './src/gameTools.js';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'poker-ledger-v1';
@@ -17,7 +18,7 @@ const SETTLED_KEY = 'poker-ledger-settled-v1';
 const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
 const DRAFT_KEY = 'poker-ledger-draft-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v30';
 
 const els = {
   date: $('date'),
@@ -49,6 +50,7 @@ const els = {
   liveSummary: $('liveSummary'),
   installBtn: $('installBtn'),
   playerNamesList: $('playerNamesList'),
+  sharedNote: $('sharedNote'),
   liveCard: $('liveCard'),
   testToggle: $('testToggle'),
   liveOff: $('liveOff'),
@@ -282,7 +284,7 @@ function refreshHostOptions() {
 // ---- Persistence -----------------------------------------------------------
 function persist() {
   if (draft) trackDraftChanges();
-  const state = { ...readSettings(), rows: liveRows(), test: testMode };
+  const state = { ...readSettings(), rows: liveRows(), test: testMode, gameId: currentGameId };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -300,6 +302,11 @@ function restore() {
     state = null;
   }
   testMode = !!state?.test;
+  // Remember which saved game this form is updating, so a reload doesn't start a duplicate.
+  if (state?.gameId && !testMode) {
+    currentGameId = state.gameId;
+    subscribeToPayments();
+  }
   if (state && Array.isArray(state.rows) && state.rows.length) {
     els.date.value = state.date ?? todayISO();
     els.buyIn.value = state.buyIn ?? '100';
@@ -405,6 +412,10 @@ function calculate() {
   } catch (err) {
     return showToast(err.message);
   }
+
+  // An edited game whose standings didn't change keeps the payments people may have ticked.
+  const kept = editBaseline && reuseSavedPayments(ledger, editBaseline);
+  if (kept) ledger.transactions = kept;
 
   renderWarnings(ledger);
   renderStandings(ledger);
@@ -540,9 +551,7 @@ function renderSettlement(ledger) {
 function updateTxnProgress(ledger) {
   const total = ledger.transactions.length;
   const done = ledger.transactions.filter((t) => settled.has(txnKey(t))).length;
-  els.txnCount.textContent = total
-    ? `${done} of ${total} settled`
-    : '';
+  els.txnCount.textContent = !total ? '' : done >= total ? '✓ All settled' : `${done} of ${total} settled`;
 }
 
 // ---- Share for payment (Supabase) -------------------------------------
@@ -550,6 +559,7 @@ function updateTxnProgress(ledger) {
 // payment paid from their phone, synced live back here via Realtime.
 let currentGameId = null;
 let paymentsChannel = null;
+let editBaseline = null; // the saved ledger of a game opened from History, until a new game starts
 
 function genGameId() {
   return Array.from(crypto.getRandomValues(new Uint8Array(8)))
@@ -609,6 +619,8 @@ function stopSharing() {
     paymentsChannel = null;
   }
   currentGameId = null;
+  editBaseline = null;
+  renderLiveBar();
 }
 
 // Publishes (or updates) the settlement plan in Supabase and returns its
@@ -660,6 +672,7 @@ async function publishForPayment(ledger) {
       .eq('id', currentGameId);
     if (error) throw error;
   }
+  renderLiveBar();
   return paymentsUrl(currentGameId);
 }
 
@@ -896,6 +909,7 @@ function renderLiveBar() {
   els.testToggle.checked = testMode;
   // Once a game is live or has a pay link it is already saved online.
   els.testToggle.disabled = !!draft || !!currentGameId;
+  els.sharedNote.hidden = !currentGameId || !!draft;
   els.liveCard.classList.toggle('is-test', testMode);
   els.liveLinkBtn.textContent = navigator.share ? 'Share link' : 'Copy link';
 }
@@ -1278,7 +1292,7 @@ function newGame() {
 }
 
 // Pulls names from every shared game's standings and fills the roster with
-// anyone who's played MIN_REGULAR_GAMES+ times — a quick start for a group
+// anyone who's played MIN_REGULAR_GAMES+ times (guests are never loaded) — a quick start for a group
 // that mostly repeats week to week. Leaves date/buy-in/fee settings alone.
 const MIN_REGULAR_GAMES = 3;
 
@@ -1301,7 +1315,7 @@ async function loadRegulars() {
     populateNameSuggestions(allNames);
 
     const regulars = [...counts.entries()]
-      .filter(([, count]) => count >= MIN_REGULAR_GAMES)
+      .filter(([name, count]) => count >= MIN_REGULAR_GAMES && !isGuestName(name))
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([name]) => name);
 
@@ -1409,6 +1423,60 @@ populateNameSuggestions(loadKnownNames());
 restore();
 renderLiveBar();
 resumeOrJoinDraft();
+
+// History's "Edit" link: open a saved game in the calculator so a mistake can be
+// fixed and shared again; the pay link and ticked payments carry over.
+async function loadGameForEdit(id) {
+  if (draft) return showToast('Stop the live game first, then edit a past game.');
+  if (currentGameId === id) return showToast('Already editing that game.');
+  const hasData = readRows().some((r) => r.name || r.chips);
+  if (hasData && !confirm('Open that game here? What is on this phone now will be cleared.')) return;
+
+  const { data: game, error } = await supabase.from('games').select('id, ledger').eq('id', id).maybeSingle();
+  if (error || !game) return showToast("Couldn't load that game — check your connection");
+  const { data: paid } = await supabase.from('payments').select('txn_key').eq('game_id', id).eq('paid', true);
+
+  const { settings, rows, notes } = inferEditableGame(game.ledger);
+  stopSharing();
+  testMode = false;
+  settled.clear();
+  (paid ?? []).forEach((p) => settled.add(p.txn_key));
+  saveSettled();
+
+  els.date.value = settings.date || todayISO();
+  els.buyIn.value = settings.buyIn;
+  els.feeType.value = settings.feeType;
+  els.feeValue.value = settings.feeValue;
+  els.feeScope.value = settings.feeScope;
+  els.foodType.value = settings.foodType;
+  els.foodValue.value = settings.foodValue;
+  els.foodScope.value = settings.foodScope;
+  els.playersBody.innerHTML = '';
+  rows.forEach((r) => addRow(r));
+  addRow();
+  refreshHostOptions();
+  els.host.value = settings.host;
+  els.foodRecipient.value = settings.foodRecipient;
+  els.results.hidden = true;
+  els.warnings.hidden = true;
+  els.waOut.hidden = true;
+  window.__ledger = null;
+
+  currentGameId = id;
+  editBaseline = game.ledger;
+  subscribeToPayments();
+  syncFeeControls();
+  persist();
+  renderLiveBar();
+  showToast(notes.length ? notes.join(' ') : 'Game loaded — fix it, then Calculate and share');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+const editId = new URLSearchParams(location.search).get('edit');
+if (editId) {
+  history.replaceState(null, '', location.pathname);
+  loadGameForEdit(editId);
+}
 
 // ---- PWA: install prompt + service worker ---------------------------------
 let deferredPrompt = null;
