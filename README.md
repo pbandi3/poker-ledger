@@ -41,6 +41,8 @@ The math runs **on-device**. A game only leaves the phone when you copy or share
 | UI / capture | `index.html`, `styles.css`, `app.js` | Entry form, results, live game. |
 | History and payments | `history.html/.js`, `pay.html/.js` | Read and update shared games. |
 | Backend | `src/supabaseClient.js`, `supabase/*.sql` | Supabase tables `games`, `payments`, `drafts`. |
+| Form and regulars logic | `src/formInput.js` | Form values to ledger input; picks regulars. Pure, unit-tested. |
+| Browser tests | `e2e/`, `playwright.config.js` | Real-browser flows against a fake Supabase; run on every pull request. |
 | PWA shell | `manifest.webmanifest`, `sw.js`, `icons/` | Installable + offline. |
 
 All arithmetic is deterministic and tested. The Supabase key in `src/supabaseClient.js`
@@ -61,6 +63,7 @@ No dependencies — nothing to `npm install`.
 
 ```bash
 npm test               # run the unit tests (node --test)
+npm run test:e2e       # browser tests against a fake Supabase (needs Google Chrome; npm install first)
 npm run icons          # rasterize icons/icon.svg -> PNGs (macOS: qlmanage + sips)
 npm run serve          # http://localhost:8080  (service worker needs http, not file://)
 ```
