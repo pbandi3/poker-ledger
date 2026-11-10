@@ -17,7 +17,7 @@ const SETTLED_KEY = 'poker-ledger-settled-v1';
 const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
 const DRAFT_KEY = 'poker-ledger-draft-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v28';
 
 const els = {
   date: $('date'),
@@ -1278,7 +1278,7 @@ function newGame() {
 }
 
 // Pulls names from every shared game's standings and fills the roster with
-// anyone who's played MIN_REGULAR_GAMES+ times — a quick start for a group
+// anyone who's played MIN_REGULAR_GAMES+ times (guests are never loaded) — a quick start for a group
 // that mostly repeats week to week. Leaves date/buy-in/fee settings alone.
 const MIN_REGULAR_GAMES = 3;
 
@@ -1301,7 +1301,7 @@ async function loadRegulars() {
     populateNameSuggestions(allNames);
 
     const regulars = [...counts.entries()]
-      .filter(([, count]) => count >= MIN_REGULAR_GAMES)
+      .filter(([name, count]) => count >= MIN_REGULAR_GAMES && !isGuestName(name))
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([name]) => name);
 
