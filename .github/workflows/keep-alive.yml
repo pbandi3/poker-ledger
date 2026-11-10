@@ -2,12 +2,12 @@ name: Keep Supabase awake
 
 # Supabase pauses free-tier projects after 7 days without activity, which breaks
 # payment links, History and name suggestions between game nights. A cheap read
-# twice a week (never more than 4 days apart) keeps it active. This cannot wake a
+# a day keeps it active (a twice-weekly ping still drew Supabase's pause warning). This cannot wake a
 # project that is already paused - restore it from the dashboard first.
 
 on:
   schedule:
-    - cron: '0 14 * * 1,4' # Mondays and Thursdays, 14:00 UTC
+    - cron: '0 14 * * *' # every day, 14:00 UTC
   workflow_dispatch:
 
 permissions:
