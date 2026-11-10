@@ -31,6 +31,7 @@ class Query {
   eq(c, v) { this.filters.push((r) => r[c] === v); return this; }
   is(c, v) { this.filters.push((r) => (r[c] ?? null) === v); return this; }
   order(c, o) { this.ord = [c, o]; return this; }
+  limit(n) { this.lim = n; return this; }
   maybeSingle() { this.one = true; return this; }
   then(res, rej) { return Promise.resolve(this.run()).then(res, rej); }
   run() {
@@ -44,6 +45,7 @@ class Query {
         const dir = o?.ascending === false ? -1 : 1;
         out.sort((a, b) => String(a[c] ?? '').localeCompare(String(b[c] ?? '')) * dir);
       }
+      if (this.lim != null) out = out.slice(0, this.lim);
       return { data: this.one ? out[0] ?? null : out, error: null };
     }
     const list = Array.isArray(this.p) ? this.p : [this.p];

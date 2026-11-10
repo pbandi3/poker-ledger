@@ -1,0 +1,33 @@
+name: Weekly backup
+
+# Saves every game and payment as a JSON file you can download from the run's
+# "Artifacts" (kept 90 days). It reads with the same public key the site uses, so
+# it can only see what the site can. It also fails loudly (and GitHub emails you)
+# if Supabase is paused or the data is empty, and doubles as extra keep-alive.
+# Restore with: node scripts/restore-backup.mjs <file> --apply
+
+on:
+  schedule:
+    - cron: '0 15 * * 0' # Sundays, 15:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - id: stamp
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - run: node scripts/backup.mjs "backups/poker-ledger-${{ steps.stamp.outputs.date }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: poker-ledger-backup-${{ steps.stamp.outputs.date }}
+          path: backups/
+          retention-days: 90
+          if-no-files-found: error

@@ -1,7 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { computeLedger } from '../src/engine.js';
-import { buildLedgerInput, countRegulars, parseAmount } from '../src/formInput.js';
+import { buildLedgerInput, countRegulars, describeFee, parseAmount, sameFee } from '../src/formInput.js';
+
+test('describeFee reads like the form and sameFee compares meaning, not strings', () => {
+  assert.equal(describeFee({ feeType: 'perHead', feeValue: '20', feeScope: 'all' }), '$20 per player');
+  assert.equal(describeFee({ feeType: 'flat', feeValue: '30', feeScope: 'winners' }), '$30 flat, winners only');
+  assert.equal(describeFee({ feeType: 'percent', feeValue: '10', feeScope: 'all' }), '10% of pool');
+  assert.equal(describeFee({ feeType: 'none', feeValue: '5', feeScope: 'all' }), 'no fee');
+  assert.equal(describeFee({ feeType: 'perHead', feeValue: '0', feeScope: 'all' }), 'no fee');
+  assert.ok(sameFee({ feeType: 'perHead', feeValue: '5.0', feeScope: 'all' }, { feeType: 'perHead', feeValue: 5, feeScope: 'all' }));
+  assert.ok(!sameFee({ feeType: 'perHead', feeValue: '5', feeScope: 'all' }, { feeType: 'perHead', feeValue: '20', feeScope: 'all' }));
+  // a "none" fee with a leftover value is still no fee
+  assert.ok(sameFee({ feeType: 'none', feeValue: '9', feeScope: 'all' }, { feeType: 'perHead', feeValue: '0', feeScope: 'all' }));
+});
 
 const settings = (over = {}) => ({
   date: '2026-11-01',

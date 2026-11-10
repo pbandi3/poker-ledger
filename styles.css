@@ -827,3 +827,11 @@ table.report.leaderboard .lbl-short {
   border-radius: 10px;
   background: rgba(46, 204, 113, 0.08);
 }
+
+.fee-hint {
+  margin: 8px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
