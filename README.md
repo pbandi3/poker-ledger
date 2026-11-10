@@ -1,41 +1,62 @@
 # Poker Night Ledger
 
 A free, installable **PWA** that turns a poker night into a balanced, zero-sum
-standings table and a **transaction-minimized** settlement plan — then exports a
-plain-text WhatsApp blast.
+standings table and a **transaction-minimized** settlement plan, then shares it to
+WhatsApp with a link where everyone can mark themselves paid.
 
-Everything runs **on-device**. No backend, no accounts, no data leaves the phone.
-Hosted for free on **GitHub Pages**.
+The math runs **on-device**. A game only leaves the phone when you copy or share it
+(or start a live game); that data goes to a free Supabase project. Hosted for free on
+**GitHub Pages**.
 
 ## Features
 
-- Flat buy-in (default **$100**) with per-player overrides for rebuys.
-- Dynamic **host fee**: per-player, flat total, or % of pool; paid by everyone or winners only.
-- **Zero-sum integrity check** — flags chip/money discrepancies instead of producing a wrong-but-balanced ledger.
-- **Minimum-transaction settlement** via exact zero-sum subset partitioning (info-theoretic minimum).
-- **WhatsApp export**, offline support, add-to-home-screen install.
-- **Autosave** across reloads (a locked phone won't lose the night); **New game** clears it explicitly.
-- Chip expressions like `60+10` for rebuys.
+**Calculating a night**
+
+- Flat buy-in (default **$100**) with per-player overrides for rebuys; chip expressions like `60+10`; negative chip counts.
+- Dynamic **host fee** (per player, flat, or % of pool; everyone or winners only) and a separate **food** charge paid to whoever ordered.
+- **Zero-sum integrity check**: flags chip/money discrepancies instead of producing a wrong-but-balanced ledger.
+- **Minimum-transaction settlement** via exact zero-sum subset partitioning.
+- **Autosave** across reloads; **New game** clears it explicitly.
+- Name suggestions, **Load regulars**, and a **G** button to mark a player as a guest (`Name (guest)`).
+
+**Sharing and tracking**
+
+- **WhatsApp message**: bold standings and settle-up list plus a pay link (copy or native share).
+- **Pay page** (`pay.html`): the shared checklist where anyone can tick payments as paid.
+- **History** (`history.html`): lifetime standings (poker-only P&L, sortable, guests hidden by default), who still owes (with a copyable reminder), past games, and fun facts.
+- **Live game**: start a game on one phone and finish it on another; edits sync in real time.
+- **Test game** switch: keeps a practice game entirely off the database.
+- Offline support and add-to-home-screen install.
 
 ## Architecture
-
-Three cleanly separated layers:
 
 | Layer | File(s) | Notes |
 | --- | --- | --- |
 | Deterministic engine | `src/engine.js` | Pure, integer-cents, no DOM. Unit-tested. |
-| UI / capture | `index.html`, `styles.css`, `app.js` | Direct entry into the players & chips table. |
+| Live-game merge | `src/draft.js` | Pure merge of two phones' edits. Unit-tested. |
+| UI / capture | `index.html`, `styles.css`, `app.js` | Entry form, results, live game. |
+| History and payments | `history.html/.js`, `pay.html/.js` | Read and update shared games. |
+| Backend | `src/supabaseClient.js`, `supabase/*.sql` | Supabase tables `games`, `payments`, `drafts`. |
 | PWA shell | `manifest.webmanifest`, `sw.js`, `icons/` | Installable + offline. |
 
-> The engine never trusts the LLM/OCR for math. Extraction (future) only fills the
-> entry form; all arithmetic is deterministic and tested.
+All arithmetic is deterministic and tested. The Supabase key in `src/supabaseClient.js`
+is the publishable (public-by-design) key; access is limited by the row-level security
+policies in `supabase/`, and there is no login, so anyone with a game's link can view it
+and mark payments.
+
+## Supabase setup
+
+1. Create a free Supabase project and put its URL and publishable key in `src/supabaseClient.js`.
+2. In **SQL Editor**, run `supabase/schema.sql`, then `supabase/drafts.sql` (both safe to re-run).
+3. Free projects pause after 7 days without activity. `.github/workflows/keep-alive.yml`
+   pings the project daily; it can't wake one that is already paused (unpause it from the dashboard).
 
 ## Develop
 
 No dependencies — nothing to `npm install`.
 
 ```bash
-npm test               # run the engine unit tests (node --test)
+npm test               # run the unit tests (node --test)
 npm run icons          # rasterize icons/icon.svg -> PNGs (macOS: qlmanage + sips)
 npm run serve          # http://localhost:8080  (service worker needs http, not file://)
 ```
@@ -60,8 +81,3 @@ npm run serve          # http://localhost:8080  (service worker needs http, not 
    ```
 
 4. Open that URL on your iPhone in Safari → **Share → Add to Home Screen**.
-
-## Roadmap
-
-- Optional cloud OCR (photo → prefilled form) behind a serverless key proxy.
-- CSV/print export of the final ledger.
