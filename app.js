@@ -10,7 +10,7 @@ import {
 } from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
 import { mergeDraftStates, stableStringify } from './src/draft.js';
-import { buildLedgerInput, countRegulars, parseAmount } from './src/formInput.js';
+import { buildLedgerInput, countRegulars, describeFee, parseAmount, sameFee } from './src/formInput.js';
 import { inferEditableGame, reuseSavedPayments } from './src/gameTools.js';
 
 const $ = (id) => document.getElementById(id);
@@ -19,7 +19,7 @@ const SETTLED_KEY = 'poker-ledger-settled-v1';
 const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
 const DRAFT_KEY = 'poker-ledger-draft-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v31';
+const APP_VERSION = 'v32';
 
 const els = {
   date: $('date'),
@@ -52,6 +52,9 @@ const els = {
   installBtn: $('installBtn'),
   playerNamesList: $('playerNamesList'),
   sharedNote: $('sharedNote'),
+  feeHint: $('feeHint'),
+  feeHintText: $('feeHintText'),
+  feeHintUse: $('feeHintUse'),
   liveCard: $('liveCard'),
   testToggle: $('testToggle'),
   liveOff: $('liveOff'),
@@ -281,6 +284,7 @@ function persist() {
     /* storage full / private mode — non-fatal */
   }
   updateLiveSummary();
+  updateFeeHint();
   if (draft) scheduleDraftPush();
 }
 
@@ -318,7 +322,51 @@ function restore() {
   }
   syncFeeControls();
   updateLiveSummary();
+  return !!(state && Array.isArray(state.rows) && state.rows.length);
 }
+
+// ---- Last game's settings ----------------------------------------------------
+// Hosts rotate and use different phones, so the starting point for a new game
+// (buy-in, host fee) comes from the most recent saved game, not from this phone.
+let lastGame = null; // { date, settings } — see inferEditableGame
+
+async function fetchLastGame() {
+  try {
+    const { data } = await supabase
+      .from('games')
+      .select('id, date, ledger')
+      .order('date', { ascending: false })
+      .limit(1);
+    const game = data?.[0];
+    lastGame = game ? { date: game.date, settings: inferEditableGame(game.ledger).settings } : null;
+  } catch {
+    /* offline: the form just keeps its usual defaults */
+  }
+}
+
+function applyLastSettings() {
+  const s = lastGame?.settings;
+  if (!s) return;
+  els.buyIn.value = s.buyIn;
+  els.feeType.value = s.feeType;
+  els.feeValue.value = s.feeValue;
+  els.feeScope.value = s.feeScope;
+  els.foodType.value = s.foodType;
+  els.foodScope.value = s.foodScope;
+  syncFeeControls();
+  persist();
+}
+
+// Not a warning: fees change on purpose. Just say what the last game used.
+function updateFeeHint() {
+  const s = lastGame?.settings;
+  const last = s && { feeType: s.feeType, feeValue: s.feeValue, feeScope: s.feeScope };
+  const show = !!last && !sameFee(readSettings(), last);
+  els.feeHint.hidden = !show;
+  if (show) els.feeHintText.textContent = `Last game (${formatDate(lastGame.date)}): ${describeFee(last)}.`;
+}
+
+const isFormPristine = () => !currentGameId && readRows().every((r) => !r.name && !r.chips);
 
 function todayISO() {
   const d = new Date();
@@ -1234,7 +1282,12 @@ function newGame() {
   renderLiveBar();
 
   syncFeeControls();
+  applyLastSettings();
   persist();
+  fetchLastGame().then(() => {
+    if (isFormPristine()) applyLastSettings();
+    updateFeeHint();
+  });
   showToast('Cleared — ready for a new game');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -1358,9 +1411,22 @@ const versionEl = $('appVersion');
 if (versionEl) versionEl.textContent = ` · ${APP_VERSION}`;
 
 populateNameSuggestions(loadKnownNames());
-restore();
+const hadSavedForm = restore();
 renderLiveBar();
 resumeOrJoinDraft();
+fetchLastGame().then(() => {
+  if (!hadSavedForm && !new URLSearchParams(location.search).has('edit') && isFormPristine()) applyLastSettings();
+  updateFeeHint();
+});
+els.feeHintUse.addEventListener('click', () => {
+  const s = lastGame?.settings;
+  if (!s) return;
+  els.feeType.value = s.feeType;
+  els.feeValue.value = s.feeValue;
+  els.feeScope.value = s.feeScope;
+  syncFeeControls();
+  persist();
+});
 
 // History's "Edit" link: open a saved game in the calculator so a mistake can be
 // fixed and shared again; the pay link and ticked payments carry over.

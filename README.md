@@ -56,6 +56,10 @@ and mark payments.
 2. In **SQL Editor**, run `supabase/schema.sql`, then `supabase/drafts.sql` (both safe to re-run).
 3. Free projects pause after 7 days without activity. `.github/workflows/keep-alive.yml`
    pings the project daily; it can't wake one that is already paused (unpause it from the dashboard).
+4. `.github/workflows/backup.yml` saves every game and payment as a JSON file each Sunday
+   (Actions → Weekly backup → the run's **Artifacts**, kept 90 days). To restore one:
+   `node scripts/restore-backup.mjs backup.json` previews it, add `--apply` to write. It never deletes anything.
+   The History page also has a **Download backup** button.
 
 ## Develop
 

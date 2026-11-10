@@ -78,3 +78,19 @@ export function countRegulars(games, minGames) {
     .map(([name]) => name);
   return { allNames, regulars };
 }
+
+const money = (v) => `$${Number(v)}`;
+
+/** "$20 per player", "$30 flat", "10% of pool", "no fee" (+ ", winners only"). */
+export function describeFee({ feeType, feeValue, feeScope }) {
+  const v = Number(feeValue) || 0;
+  if (feeType === 'none' || v === 0) return 'no fee';
+  const base =
+    feeType === 'perHead' ? `${money(v)} per player` : feeType === 'flat' ? `${money(v)} flat` : `${v}% of pool`;
+  return feeScope === 'winners' ? `${base}, winners only` : base;
+}
+
+/** True when two settings objects mean the same host fee. */
+export function sameFee(a, b) {
+  return describeFee(a) === describeFee(b);
+}

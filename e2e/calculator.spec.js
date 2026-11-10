@@ -160,3 +160,42 @@ test.describe('editing a past game', () => {
     expect(db.games[0].ledger.standings.find((s) => s.name === 'Cy').chipsCents).toBe(5000);
   });
 });
+
+test.describe('last game settings', () => {
+  const lastNight = savedGame('last1', '2026-11-01', [['Ann', 190], ['Bob', 110], ['Cy', 0]], { host: 'Ann', fee: 20 });
+
+  test('a fresh form starts from the last game, and a different fee gets a quiet note', async ({ page }) => {
+    await installFakeSupabase(page, { games: [lastNight] });
+    await page.goto('/');
+    await expect(page.locator('#feeValue')).toHaveValue('20');
+    await expect(page.locator('#feeHint')).toBeHidden();
+
+    await page.fill('#feeValue', '5');
+    await expect(page.locator('#feeHint')).toBeVisible();
+    await expect(page.locator('#feeHintText')).toContainText('$20 per player');
+    await page.click('#feeHintUse');
+    await expect(page.locator('#feeValue')).toHaveValue('20');
+    await expect(page.locator('#feeHint')).toBeHidden();
+  });
+
+  test('New game goes back to the last game\'s settings', async ({ page }) => {
+    await installFakeSupabase(page, { games: [lastNight] });
+    await page.goto('/');
+    await expect(page.locator('#feeValue')).toHaveValue('20');
+    await page.fill('#feeValue', '7');
+    page.once('dialog', (d) => d.accept());
+    await page.click('#newGameBtn');
+    await expect(page.locator('#feeValue')).toHaveValue('20');
+  });
+
+  test('a form you already started is left alone on reload', async ({ page }) => {
+    await installFakeSupabase(page, { games: [lastNight] });
+    await page.goto('/');
+    await expect(page.locator('#feeValue')).toHaveValue('20');
+    await page.fill('#feeValue', '5');
+    await page.locator('#playersBody .j-name').first().fill('Ann');
+    await page.reload();
+    await expect(page.locator('#feeValue')).toHaveValue('5');
+    await expect(page.locator('#feeHint')).toBeVisible();
+  });
+});
