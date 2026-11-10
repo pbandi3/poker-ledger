@@ -6,7 +6,11 @@
   "scripts": {
     "test": "node --test",
     "icons": "bash scripts/gen-icons.sh",
-    "serve": "python3 -m http.server 8080"
+    "serve": "python3 -m http.server 8080",
+    "test:e2e": "playwright test"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.65.0"
+  }
 }

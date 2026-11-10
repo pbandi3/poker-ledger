@@ -10,6 +10,7 @@ import {
 } from './src/engine.js';
 import { supabase } from './src/supabaseClient.js';
 import { mergeDraftStates, stableStringify } from './src/draft.js';
+import { buildLedgerInput, countRegulars, parseAmount } from './src/formInput.js';
 import { inferEditableGame, reuseSavedPayments } from './src/gameTools.js';
 
 const $ = (id) => document.getElementById(id);
@@ -18,7 +19,7 @@ const SETTLED_KEY = 'poker-ledger-settled-v1';
 const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
 const DRAFT_KEY = 'poker-ledger-draft-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v31';
 
 const els = {
   date: $('date'),
@@ -74,17 +75,6 @@ const SAMPLE = [
   { name: 'Siva', buyIn: '', chips: '175' },
   { name: 'Sharath', buyIn: '', chips: '110' },
 ];
-
-// ---- Safe "60+10" style expression parser (additive only) ------------------
-function parseAmount(raw) {
-  const s = String(raw ?? '').trim();
-  if (s === '') return null;
-  if (!/^-?[\d+.\s]+$/.test(s)) return NaN;
-  return s
-    .split('+')
-    .map((t) => Number(t.trim()))
-    .reduce((a, b) => a + b, 0);
-}
 
 // ---- Settled payments (survives reload so you can tick them off live) ------
 function loadSettled() {
@@ -360,55 +350,12 @@ function syncFeeControls() {
 
 // ---- Compute + render ------------------------------------------------------
 function calculate() {
-  const rows = readRows();
-  const players = [];
-  for (const r of rows) {
-    if (!r.name) return showToast('Every row needs a name.');
-    const chips = parseAmount(r.chips) ?? 0;
-    if (Number.isNaN(chips)) return showToast(`Bad chip value for ${r.name}.`);
-    const buyIn = r.buyIn === '' ? null : parseAmount(r.buyIn);
-    if (buyIn !== null && Number.isNaN(buyIn)) return showToast(`Bad buy-in for ${r.name}.`);
-    players.push({ name: r.name, chips, ...(buyIn !== null ? { buyIn } : {}) });
-  }
-  if (players.length === 0) return showToast('Add at least one player.');
-
-  // Host fee is active only when someone is set to receive it AND the amount is non-zero.
-  const feeValue = parseAmount(els.feeValue.value) ?? 0;
-  if (Number.isNaN(feeValue)) return showToast('Bad host fee amount.');
-  if (els.feeType.value !== 'none' && feeValue > 0 && !els.host.value) {
-    return showToast('Select who received the host fee, or set fee type to No fee.');
-  }
-
-  // Food is active only when someone fronted it AND the amount is non-zero.
-  const foodValue = parseAmount(els.foodValue.value) ?? 0;
-  if (Number.isNaN(foodValue)) return showToast('Bad food amount.');
-  if (foodValue > 0 && !els.foodRecipient.value) {
-    return showToast('Select who paid for food, or set the food amount to $0.');
-  }
-  const foodCfg =
-    foodValue > 0 && els.foodRecipient.value
-      ? {
-          recipient: els.foodRecipient.value,
-          type: els.foodType.value,
-          value: foodValue,
-          scope: els.foodScope.value,
-        }
-      : null;
+  const built = buildLedgerInput(readRows(), readSettings());
+  if (built.error) return showToast(built.error);
 
   let ledger;
   try {
-    ledger = computeLedger({
-      defaultBuyIn: parseAmount(els.buyIn.value) ?? 100,
-      date: els.date.value || null,
-      host: els.host.value || null,
-      fee: {
-        type: els.feeType.value,
-        value: feeValue,
-        scope: els.feeScope.value,
-      },
-      food: foodCfg,
-      players,
-    });
+    ledger = computeLedger(built.input);
   } catch (err) {
     return showToast(err.message);
   }
@@ -672,6 +619,7 @@ async function publishForPayment(ledger) {
       .eq('id', currentGameId);
     if (error) throw error;
   }
+  persist(); // remember the game id so a reload keeps updating this game
   renderLiveBar();
   return paymentsUrl(currentGameId);
 }
@@ -1302,22 +1250,12 @@ async function loadRegulars() {
     const { data: games, error } = await supabase.from('games').select('ledger');
     if (error) throw error;
 
-    const counts = new Map();
-    for (const g of games ?? []) {
-      const names = new Set((g.ledger?.standings ?? []).map((s) => s?.name).filter(Boolean));
-      for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
+    const { allNames, regulars } = countRegulars(games, MIN_REGULAR_GAMES);
 
     // Refresh the name-suggestion cache with everyone ever seen, not just
     // regulars — a one-time player's name is still worth suggesting later.
-    const allNames = [...counts.keys()].sort((a, b) => a.localeCompare(b));
     saveKnownNames(allNames);
     populateNameSuggestions(allNames);
-
-    const regulars = [...counts.entries()]
-      .filter(([name, count]) => count >= MIN_REGULAR_GAMES && !isGuestName(name))
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([name]) => name);
 
     if (!regulars.length) {
       return showToast(`No players with ${MIN_REGULAR_GAMES}+ games yet.`);

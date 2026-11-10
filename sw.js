@@ -1,6 +1,6 @@
 // Offline-first service worker for the Poker Night Ledger PWA.
 // Bump CACHE version whenever any cached asset changes to force an update.
-const CACHE = 'poker-ledger-v30';
+const CACHE = 'poker-ledger-v31';
 
 // Resolve against the SW location so it works under any GitHub Pages subpath.
 const ASSETS = [
@@ -12,6 +12,7 @@ const ASSETS = [
   './src/supabaseClient.js',
   './src/draft.js',
   './src/gameTools.js',
+  './src/formInput.js',
   './pay.html',
   './pay.js',
   './history.html',
