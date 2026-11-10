@@ -19,7 +19,7 @@ const SETTLED_KEY = 'poker-ledger-settled-v1';
 const KNOWN_NAMES_KEY = 'poker-ledger-known-names-v1';
 const DRAFT_KEY = 'poker-ledger-draft-v1';
 // Bump alongside CACHE in sw.js; shown in the footer to confirm a deploy landed.
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v33';
 
 const els = {
   date: $('date'),
@@ -327,7 +327,7 @@ function restore() {
 
 // ---- Last game's settings ----------------------------------------------------
 // Hosts rotate and use different phones, so the starting point for a new game
-// (buy-in, host fee) comes from the most recent saved game, not from this phone.
+// (buy-in, food split) comes from the most recent saved game, not from this phone.
 let lastGame = null; // { date, settings } — see inferEditableGame
 
 async function fetchLastGame() {
@@ -347,10 +347,8 @@ async function fetchLastGame() {
 function applyLastSettings() {
   const s = lastGame?.settings;
   if (!s) return;
+  // The host fee stays at the usual $5 per player; the note below offers last game's.
   els.buyIn.value = s.buyIn;
-  els.feeType.value = s.feeType;
-  els.feeValue.value = s.feeValue;
-  els.feeScope.value = s.feeScope;
   els.foodType.value = s.foodType;
   els.foodScope.value = s.foodScope;
   syncFeeControls();
