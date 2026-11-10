@@ -13,7 +13,7 @@ The math runs **on-device**. A game only leaves the phone when you copy or share
 **Calculating a night**
 
 - Flat buy-in (default **$100**) with per-player overrides for rebuys; chip expressions like `60+10`; negative chip counts.
-- Dynamic **host fee** (per player, flat, or % of pool; everyone or winners only) and a separate **food** charge paid to whoever ordered.
+- Dynamic **host fee** (per player, flat, or % of pool; everyone or winners only) and a separate **food** charge paid to whoever ordered. A new game starts from the last game's buy-in and fee, with a quiet note (and a **Use that** button) if the fee on screen differs.
 - **Zero-sum integrity check**: flags chip/money discrepancies instead of producing a wrong-but-balanced ledger.
 - **Minimum-transaction settlement** via exact zero-sum subset partitioning.
 - **Autosave** across reloads; **New game** clears it explicitly.
@@ -29,6 +29,7 @@ The math runs **on-device**. A game only leaves the phone when you copy or share
 - **Backup**: download every game and payment as JSON, or a CSV for a spreadsheet.
 - **Live game**: start a game on one phone and finish it on another; edits sync in real time.
 - **Test game** switch: keeps a practice game entirely off the database.
+- A collapsible **How to run a game** guide on the main page.
 - Offline support and add-to-home-screen install.
 
 ## Architecture
@@ -41,7 +42,8 @@ The math runs **on-device**. A game only leaves the phone when you copy or share
 | UI / capture | `index.html`, `styles.css`, `app.js` | Entry form, results, live game. |
 | History and payments | `history.html/.js`, `pay.html/.js` | Read and update shared games. |
 | Backend | `src/supabaseClient.js`, `supabase/*.sql` | Supabase tables `games`, `payments`, `drafts`. |
-| Form and regulars logic | `src/formInput.js` | Form values to ledger input; picks regulars. Pure, unit-tested. |
+| Form and regulars logic | `src/formInput.js` | Form values to ledger input; picks regulars; describes fees. Pure, unit-tested. |
+| Backup and restore | `src/backup.js`, `scripts/backup.mjs`, `scripts/restore-backup.mjs` | Used by the weekly backup workflow. Pure parts unit-tested. |
 | Browser tests | `e2e/`, `playwright.config.js` | Real-browser flows against a fake Supabase; run on every pull request. |
 | PWA shell | `manifest.webmanifest`, `sw.js`, `icons/` | Installable + offline. |
 
@@ -63,7 +65,8 @@ and mark payments.
 
 ## Develop
 
-No dependencies — nothing to `npm install`.
+The app itself has no dependencies and no build step. `npm install` is only needed for the
+browser tests (Playwright).
 
 ```bash
 npm test               # run the unit tests (node --test)
@@ -84,7 +87,8 @@ npm run serve          # http://localhost:8080  (service worker needs http, not 
    ```
 
 2. In the repo: **Settings → Pages → Build and deployment → Source = GitHub Actions**.
-3. The included workflow (`.github/workflows/deploy.yml`) runs the tests and publishes.
+3. The included workflow (`.github/workflows/deploy.yml`) runs the unit and browser tests and publishes
+   only if both pass. Pull requests run the same tests through `.github/workflows/ci.yml`.
    Your app will be live at:
 
    ```
