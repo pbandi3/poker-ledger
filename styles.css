@@ -720,3 +720,18 @@ table.report.leaderboard .lbl-short {
 .live-card.is-test .test-row b {
   color: var(--warn);
 }
+
+.help-card summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+.help-steps {
+  margin: 12px 0;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.help-steps li {
+  margin-bottom: 6px;
+}
